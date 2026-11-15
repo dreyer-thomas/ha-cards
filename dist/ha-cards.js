@@ -1,0 +1,734 @@
+/*
+ * ha-cards – Dashboard-Karten für Home Assistant im Stil der Growatt-SPH-Karte.
+ *
+ *   custom:hc-weather-station-card   Wetterstation (Homematic HM-WDS100 u. ä.)
+ *   custom:hc-diskstation-card       Synology DiskStation (Integration synology_dsm)
+ *
+ * Beide Karten finden ihre Entitäten selbst; die minimale Konfiguration ist nur der Typ.
+ * Gestaltung angelehnt an die Karten von BavarianData (Chris Krammer, MIT),
+ * https://github.com/JustChr/BavarianData – eigener Code, keine Grafiken übernommen.
+ * MIT-Lizenz, Nutzung auf eigene Verantwortung.
+ */
+
+const HC_VERSION = "0.1.0";
+
+// Material-Design-Icons (Apache 2.0, Pictogrammers) als Inline-SVG
+const HC_ICONS = {
+  sun: "M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z",
+  drop: "M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z",
+  humidity: "M12,3.25C12,3.25 6,10 6,14C6,17.32 8.69,20 12,20A6,6 0 0,0 18,14C18,10 12,3.25 12,3.25M14.47,9.97L15.53,11.03L9.53,17.03L8.47,15.97M10,10A1,1 0 0,1 11,11A1,1 0 0,1 10,12A1,1 0 0,1 9,11A1,1 0 0,1 10,10M14,14A1,1 0 0,1 15,15A1,1 0 0,1 14,16A1,1 0 0,1 13,15A1,1 0 0,1 14,14Z",
+  wind: "M4,10A1,1 0 0,1 3,9A1,1 0 0,1 4,8H12A2,2 0 0,0 14,6A2,2 0 0,0 12,4C11.45,4 10.95,4.22 10.59,4.59C10.2,5 9.56,5 9.17,4.59C8.78,4.2 8.78,3.56 9.17,3.17C9.9,2.45 10.9,2 12,2A4,4 0 0,1 16,6A4,4 0 0,1 12,10H4M19,12A1,1 0 0,0 20,11A1,1 0 0,0 19,10C18.72,10 18.47,10.11 18.29,10.29C17.9,10.68 17.27,10.68 16.88,10.29C16.5,9.9 16.5,9.27 16.88,8.88C17.42,8.34 18.17,8 19,8A3,3 0 0,1 22,11A3,3 0 0,1 19,14H5A1,1 0 0,1 4,13A1,1 0 0,1 5,12H19M18,18H4A1,1 0 0,1 3,17A1,1 0 0,1 4,16H18A3,3 0 0,1 21,19A3,3 0 0,1 18,22C17.17,22 16.42,21.66 15.88,21.12C15.5,20.73 15.5,20.1 15.88,19.71C16.27,19.32 16.9,19.32 17.29,19.71C17.47,19.89 17.72,20 18,20A1,1 0 0,0 19,19A1,1 0 0,0 18,18Z",
+  cloud: "M6.5,20Q4.22,20 2.61,18.43Q1,16.85 1,14.58Q1,12.63 2.17,11.1Q3.35,9.57 5.25,9.15Q5.88,6.85 7.75,5.43Q9.63,4 12,4Q14.93,4 16.96,6.04Q19,8.07 19,11Q20.73,11.2 21.86,12.5Q23,13.78 23,15.5Q23,17.38 21.69,18.69Q20.38,20 18.5,20Z",
+  thermo: "M15,13V5A3,3 0 0,0 9,5V13A5,5 0 1,0 15,13M12,4A1,1 0 0,1 13,5V8H11V5A1,1 0 0,1 12,4Z",
+  battery: "M16,20H8V6H16M16.67,4H15V2H9V4H7.33A1.33,1.33 0 0,0 6,5.33V20.67C6,21.4 6.6,22 7.33,22H16.67A1.33,1.33 0 0,0 18,20.67V5.33C18,4.6 17.4,4 16.67,4Z",
+  cpu: "M17,17H7V7H17M21,11V9H19V7C19,5.89 18.1,5 17,5H15V3H13V5H11V3H9V5H7C5.89,5 5,5.89 5,7V9H3V11H5V13H3V15H5V17A2,2 0 0,0 7,19H9V21H11V19H13V21H15V19H17A2,2 0 0,0 19,17V15H21V13H19V11M13,13H11V11H13M15,9H9V15H15V9Z",
+  memory: "M6,4H18V5H21V7H18V9H21V11H18V13H21V15H18V17H21V19H18V20H6V19H3V17H6V15H3V13H6V11H3V9H6V7H3V5H6V4M11,15V18H12V15H11M13,15V18H14V15H13M15,15V18H16V15H15Z",
+  upload: "M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z",
+  download: "M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z",
+  disk: "M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2M12,4A6,6 0 0,0 6,10C6,13.31 8.69,16 12.1,16L11.22,13.77C10.95,13.29 11.11,12.68 11.59,12.4L12.45,11.9C12.93,11.63 13.54,11.79 13.82,12.27L15.74,14.69C17.12,13.59 18,11.9 18,10A6,6 0 0,0 12,4M12,9A1,1 0 0,1 13,10A1,1 0 0,1 12,11A1,1 0 0,1 11,10A1,1 0 0,1 12,9M7,18A1,1 0 0,0 6,19A1,1 0 0,0 7,20A1,1 0 0,0 8,19A1,1 0 0,0 7,18M12.09,13.27L14.58,19.58L17.17,18.08L12.95,12.77L12.09,13.27Z",
+  shield: "M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z",
+  alert: "M13,14H11V9H13M13,18H11V16H13M1,21H23L12,2L1,21Z",
+};
+
+const hcIcon = (name, cls = "") =>
+  `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${HC_ICONS[name]}"/></svg>`;
+const hcEsc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ---------------------------------------------------------------------------
+// Gemeinsame Basis: Rendering, Formatierung, Detaildialog, Statistikabruf
+// ---------------------------------------------------------------------------
+class HcBaseCard extends HTMLElement {
+  setConfig(config) {
+    this._config = { ...(config || {}) };
+    if (!this.shadowRoot) {
+      this.attachShadow({ mode: "open" });
+      this.shadowRoot.addEventListener("click", (ev) => this._onClick(ev));
+    }
+    this._map = null;
+    this._last = "";
+    this._paint();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._map) this._discover();
+    if (this._raf) return;
+    this._raf = requestAnimationFrame(() => {
+      this._raf = null;
+      this._paint();
+    });
+  }
+
+  getCardSize() {
+    return 7;
+  }
+
+  getGridOptions() {
+    return { columns: 12, min_columns: 6 };
+  }
+
+  // ---- Zugriff ----
+  _st(key) {
+    const id = this._map?.[key];
+    return id ? this._hass.states[id] : undefined;
+  }
+
+  _num(key) {
+    const s = this._st(key);
+    if (!s) return null;
+    const v = parseFloat(s.state);
+    return Number.isFinite(v) ? v : null;
+  }
+
+  _on(key) {
+    const s = this._st(key);
+    return s ? s.state === "on" : null;
+  }
+
+  // ---- Formatierung ----
+  get _lang() {
+    return this._hass?.locale?.language || this._hass?.language || "de";
+  }
+
+  _fmt(v, digits = 0) {
+    if (v === null || v === undefined || !Number.isFinite(v)) return "–";
+    return v.toLocaleString(this._lang, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+
+  _freshest() {
+    let best = null;
+    for (const id of Object.values(this._map || {})) {
+      const st = this._hass.states[id];
+      if (!st || st.state === "unavailable") continue;
+      const t = Date.parse(st.last_reported || st.last_updated || "");
+      if (Number.isFinite(t) && (best === null || t > best)) best = t;
+    }
+    return best;
+  }
+
+  _ago(t) {
+    if (t === null || t === undefined) return "";
+    const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 60) return `vor ${s} s`;
+    const m = Math.round(s / 60);
+    return m < 60 ? `vor ${m} min` : `vor ${Math.round(m / 60)} h`;
+  }
+
+  _pill(staleAfterMs, bad = false) {
+    const fresh = this._freshest();
+    const stale = fresh !== null && Date.now() - fresh > staleAfterMs;
+    return `<div class="pill" title="Letzte Daten"><span class="dot ${bad || stale ? "bad" : ""}"></span>${hcEsc(this._ago(fresh))}</div>`;
+  }
+
+  // ---- Bausteine ----
+  _tile(icon, value, label, cls = "", key = null) {
+    const inner = `${hcIcon(icon, cls)}<div><div class="tv">${value}</div><div class="tl">${hcEsc(label)}</div></div>`;
+    return key && this._map?.[key]
+      ? `<button class="tile click" data-more="${key}" aria-label="${hcEsc(label)}: Verlauf anzeigen">${inner}</button>`
+      : `<div class="tile">${inner}</div>`;
+  }
+
+  _paint() {
+    if (!this.shadowRoot || !this._config) return;
+    let body = "";
+    if (this._hass) body = this._map ? this._render() : `<div class="empty">${hcEsc(this._emptyText())}</div>`;
+    const html = `<style>${HC_STYLES}${this._styles ? this._styles() : ""}</style><ha-card>${body}</ha-card>`;
+    if (html === this._last) return;
+    this._last = html;
+    this.shadowRoot.innerHTML = html;
+  }
+
+  _onClick(ev) {
+    const el = ev.composedPath().find((n) => n.dataset && n.dataset.more);
+    if (!el) return;
+    const entityId = this._map?.[el.dataset.more];
+    if (entityId) {
+      this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
+    }
+  }
+
+  // Stündliche Langzeitstatistik ab gestern 23:00 holen (alle 10 min), Ergebnis in this._stats
+  _ensureStats(keys) {
+    const ids = keys.map((k) => this._map?.[k]).filter(Boolean);
+    if (!ids.length || this._statsLoading) return;
+    const now = Date.now();
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    if (this._statsAt && now - this._statsAt < 600000 && this._statsDay === midnight.getTime()) return;
+    if (this._statsFailedAt && now - this._statsFailedAt < 60000) return;
+    this._statsLoading = true;
+    this._hass.callWS({
+      type: "recorder/statistics_during_period",
+      start_time: new Date(midnight.getTime() - 3600e3).toISOString(),
+      statistic_ids: ids,
+      period: "hour",
+      types: ["state", "min", "max", "change"],
+    }).then((res) => {
+      this._stats = { res, midnight: midnight.getTime() };
+      this._statsAt = Date.now();
+      this._statsDay = midnight.getTime();
+      this._statsLoading = false;
+      this._last = "";
+      this._paint();
+    }).catch(() => {
+      this._statsLoading = false;
+      this._statsFailedAt = Date.now();
+    });
+  }
+
+  _rows(key) {
+    const id = this._map?.[key];
+    return (id && this._stats?.res?.[id]) || [];
+  }
+
+  // Zuwachs eines Zählers seit Mitternacht (Stand jetzt − Stand um 0 Uhr; bei Rücksetzen Summe der Änderungen)
+  _sinceMidnight(key) {
+    const rows = this._rows(key);
+    const cur = this._num(key);
+    if (!rows.length || cur === null) return null;
+    const mid = this._stats.midnight;
+    const start = (r) => (typeof r.start === "number" ? r.start : Date.parse(r.start));
+    const before = rows.filter((r) => start(r) < mid).pop();
+    if (before && before.state !== null && before.state !== undefined && cur >= before.state) return cur - before.state;
+    return rows.filter((r) => start(r) >= mid).reduce((a, r) => a + Math.max(0, r.change ?? 0), 0);
+  }
+
+  _minMaxToday(key) {
+    const mid = this._stats?.midnight;
+    const start = (r) => (typeof r.start === "number" ? r.start : Date.parse(r.start));
+    const rows = this._rows(key).filter((r) => start(r) >= mid);
+    const cur = this._num(key);
+    const mins = rows.map((r) => r.min).filter((v) => v !== null && v !== undefined);
+    const maxs = rows.map((r) => r.max).filter((v) => v !== null && v !== undefined);
+    if (cur !== null) { mins.push(cur); maxs.push(cur); }
+    if (!mins.length) return { min: null, max: null };
+    return { min: Math.min(...mins), max: Math.max(...maxs) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Wetterstation
+// ---------------------------------------------------------------------------
+// Homematic-Parameter -> Rolle; andere Stationen über device_class bzw. Konfiguration
+const HC_WX_PARAMS = {
+  TEMPERATURE: "temperature", HUMIDITY: "humidity", WIND_SPEED: "wind_speed",
+  WIND_DIRECTION: "wind_direction", WIND_DIRECTION_RANGE: "wind_range", RAIN_COUNTER: "rain_total",
+  RAINING: "raining", SUNSHINEDURATION: "sunshine", BRIGHTNESS: "brightness", LOWBAT: "battery_low",
+};
+const HC_WX_KEYS = Object.values(HC_WX_PARAMS);
+const HC_DIRS = ["Nord", "Nordost", "Ost", "Südost", "Süd", "Südwest", "West", "Nordwest"];
+
+class HcWeatherStationCard extends HcBaseCard {
+  static getStubConfig() {
+    return {};
+  }
+
+  static getConfigElement() {
+    return document.createElement("hc-weather-station-card-editor");
+  }
+
+  _emptyText() {
+    return "Keine Wetterstation gefunden. In der Kartenkonfiguration unter entities zuordnen (temperature, humidity, wind_speed, …).";
+  }
+
+  _discover() {
+    const hass = this._hass;
+    if (!hass?.states) return;
+    const map = {};
+    // 1) Gerät mit Regenzähler/Windmesser suchen (Homematic: Attribut "parameter")
+    let device = this._config.device_id;
+    if (!device && hass.entities) {
+      for (const ent of Object.values(hass.entities)) {
+        const p = hass.states[ent.entity_id]?.attributes?.parameter;
+        if (p === "RAIN_COUNTER" || p === "WIND_SPEED") { device = ent.device_id; break; }
+      }
+    }
+    if (device && hass.entities) {
+      for (const ent of Object.values(hass.entities)) {
+        if (ent.device_id !== device) continue;
+        const role = HC_WX_PARAMS[hass.states[ent.entity_id]?.attributes?.parameter];
+        if (role && !map[role]) map[role] = ent.entity_id;
+      }
+      this._deviceId = device;
+    }
+    // 2) Ausdrückliche Zuordnung aus der Konfiguration gewinnt
+    for (const [role, id] of Object.entries(this._config.entities || {})) {
+      if (HC_WX_KEYS.includes(role) && id) map[role] = id;
+    }
+    if (map.temperature) this._map = map;
+  }
+
+  _model() {
+    const raining = this._on("raining") === true;
+    const sun = this._hass.states["sun.sun"];
+    const brightness = this._num("brightness");
+    const night = sun ? sun.state === "below_horizon" : brightness !== null && brightness < 15;
+    const sunSt = this._st("sunshine");
+    const sunny = !night && !raining && sunSt && Date.now() - Date.parse(sunSt.last_changed) < 20 * 60000;
+    const wind = this._num("wind_speed");
+    return {
+      temp: this._num("temperature"), hum: this._num("humidity"), wind, dir: this._num("wind_direction"),
+      range: this._num("wind_range"), raining, night, sunny, windy: (wind ?? 0) >= 20, calm: (wind ?? 0) < 2,
+      rainToday: this._sinceMidnight("rain_total"), sunToday: this._sinceMidnight("sunshine"),
+      mm: this._minMaxToday("temperature"), lowbat: this._on("battery_low") === true,
+    };
+  }
+
+  _dirName(deg) {
+    if (deg === null) return "";
+    return HC_DIRS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+  }
+
+  _hero(m) {
+    const scene = m.raining ? "rain" : m.night ? "night" : m.sunny ? "sunny" : "cloudy";
+    const drops = m.raining
+      ? Array.from({ length: 11 }, (_, i) => `<line class="drop" x1="${136 + i * 14}" y1="136" x2="${130 + i * 14}" y2="150" style="animation-delay:${(i % 5) * 0.18}s"/>`).join("")
+      : "";
+    const windLines = m.windy
+      ? `<path class="gust" d="M20 140 H120 a10 10 0 1 0 -10 -10"/><path class="gust g2" d="M40 160 H180"/>` : "";
+    return `
+      <div class="hero wx ${scene}">
+        <div class="hero__top"><div class="hero__title">${hcEsc(this._config.title || "Wetterstation")}</div>${this._pill(15 * 60000, m.lowbat)}</div>
+        <svg class="scene" viewBox="0 0 400 190" role="img" aria-label="Wetter">
+          ${scene === "night" || (m.night && m.raining) ? `<path class="moon" d="M318 44a20 20 0 1 0 16 33a17 17 0 0 1-16-33z"/><circle class="star" cx="250" cy="40" r="1.6"/><circle class="star" cx="280" cy="70" r="1.2"/><circle class="star" cx="360" cy="96" r="1.4"/>` : ""}
+          ${scene === "sunny" ? `<g class="sunrays"><circle class="sunc" cx="300" cy="70" r="26"/></g>` : ""}
+          ${scene === "cloudy" ? `<circle class="sunc dim" cx="300" cy="66" r="22"/>` : ""}
+          <g class="clouds ${m.windy ? "fast" : ""}">
+            ${scene !== "sunny" ? `<path class="cloud big" d="M120 96 a26 26 0 0 1 50 -12 a32 32 0 0 1 60 12 a20 20 0 0 1 0 36 h-110 a18 18 0 0 1 0 -36z"/>` : ""}
+            <path class="cloud small" d="M250 120 a16 16 0 0 1 30 -8 a20 20 0 0 1 38 8 a12 12 0 0 1 0 22 h-68 a11 11 0 0 1 0 -22z"/>
+          </g>
+          ${drops}
+          ${windLines}
+          <path class="hill" d="M0 170 Q100 150 200 166 T400 160 V190 H0 Z"/>
+        </svg>
+      </div>`;
+  }
+
+  _compass(m) {
+    const deg = m.dir ?? 0;
+    const range = Math.max(0, Math.min(180, m.range ?? 0));
+    // Fächer = Schwankungsbereich der Richtung
+    const arc = (a) => {
+      const r = 38, rad = ((a - 90) * Math.PI) / 180;
+      return [50 + r * Math.cos(rad), 50 + r * Math.sin(rad)];
+    };
+    const [x1, y1] = arc(deg - range / 2);
+    const [x2, y2] = arc(deg + range / 2);
+    const fan = range > 4 ? `<path class="fan" d="M50 50 L${x1} ${y1} A38 38 0 ${range > 180 ? 1 : 0} 1 ${x2} ${y2} Z"/>` : "";
+    return `<svg class="compass" viewBox="0 0 100 100" aria-hidden="true">
+      <circle class="ring" cx="50" cy="50" r="44"/>
+      ${["N", "O", "S", "W"].map((t, i) => {
+        const [x, y] = [[50, 15], [87, 54], [50, 93], [13, 54]][i];
+        return `<text x="${x}" y="${y}">${t}</text>`;
+      }).join("")}
+      ${m.dir !== null && !m.calm ? fan : ""}
+      ${m.dir !== null && !m.calm ? `<g transform="rotate(${deg + 180} 50 50)"><path class="arrow" d="M50 18 L58 40 L50 35 L42 40 Z"/><line class="shaft" x1="50" y1="35" x2="50" y2="74"/></g>` : ""}
+    </svg>`;
+  }
+
+  _render() {
+    this._ensureStats(["temperature", "rain_total", "sunshine"]);
+    const m = this._model();
+    const calm = m.calm;
+    const windTxt = calm ? "Windstill" : `Wind ${this._fmt(m.wind, 0)} km/h aus ${this._dirName(m.dir)}`;
+    let title;
+    if (m.raining) title = `Es regnet${m.rainToday ? ` · ${this._fmt(m.rainToday, 1)} mm heute` : ""}`;
+    else if (m.sunny) title = "Sonnig";
+    else if (m.night) title = "Trockene Nacht";
+    else title = (m.rainToday ?? 0) > 0.2 ? "Trocken – heute schon Regen" : "Bewölkt, trocken";
+    const sunH = m.sunToday === null ? null : m.sunToday / 60;
+    return `
+      ${this._hero(m)}
+      <div class="main">
+        <div class="head">${hcEsc(title)}</div>
+        <div class="sub">${hcEsc(windTxt)}</div>
+        <div class="big">
+          <button class="soc click" data-more="temperature" aria-label="Temperatur: Verlauf anzeigen">
+            <span class="bn">${this._fmt(m.temp, 1)}</span><span class="bu">°C</span><div class="bl">jetzt</div></button>
+          <div class="right"><div class="hilo"><span>↑ ${this._fmt(m.mm.max, 1)}°</span><span>↓ ${this._fmt(m.mm.min, 1)}°</span></div><div class="bl">heute</div></div>
+        </div>
+        <div class="windrow">
+          ${this._compass(m)}
+          <div class="windinfo"><div class="tv">${calm ? "Windstill" : `${this._fmt(m.wind, 0)} km/h`}</div>
+            <div class="tl">${calm || m.dir === null ? "keine Windrichtung" : `aus ${hcEsc(this._dirName(m.dir))} (${this._fmt(m.dir, 0)}°)${m.range ? ` · schwankt ±${this._fmt(m.range / 2, 0)}°` : ""}`}</div></div>
+        </div>
+        <div class="tiles">
+          ${this._tile("humidity", `${this._fmt(m.hum, 0)} %`, "Luftfeuchte", "blue", "humidity")}
+          ${this._tile("wind", calm ? "0 km/h" : `${this._fmt(m.wind, 0)} km/h`, "Wind", "", "wind_speed")}
+          ${this._tile("drop", `${this._fmt(m.rainToday, 1)} mm`, "Regen heute", m.raining ? "blue" : "", "rain_total")}
+          ${this._tile("sun", sunH === null ? "–" : `${this._fmt(sunH, 1)} h`, "Sonne heute", "amber", "sunshine")}
+        </div>
+      </div>
+      <div class="foot">
+        ${m.lowbat ? `<span class="warn">${hcIcon("alert")}Batterie der Wetterstation schwach</span>` : `<span>${hcIcon("battery")}Batterie in Ordnung</span>`}
+        <span>${hcIcon("sun")}Helligkeit ${this._fmt(this._num("brightness"), 0)} · Regen gesamt ${this._fmt(this._num("rain_total"), 1)} mm</span>
+      </div>`;
+  }
+
+  _styles() {
+    return `
+      .hero.wx.sunny { background: linear-gradient(180deg, #4f97e3 0%, #8ec1f2 55%, #cfe6fb 100%); }
+      .hero.wx.cloudy { background: linear-gradient(180deg, #8a99ab 0%, #b7c3d1 55%, #dde4ec 100%); }
+      .hero.wx.rain { background: linear-gradient(180deg, #5d6b7c 0%, #7f8c9b 55%, #aab5c1 100%); }
+      .hero.wx.night { background: linear-gradient(180deg, #172238 0%, #2c3d5c 55%, #455877 100%); }
+      .scene .cloud { fill: #f4f6f9; } .rain .scene .cloud, .cloudy .scene .cloud.big { fill: #e3e8ee; }
+      .night .scene .cloud { fill: #6f7f99; opacity: .8; }
+      .scene .clouds { animation: hc-drift 18s ease-in-out infinite alternate; }
+      .scene .clouds.fast { animation-duration: 5s; }
+      @keyframes hc-drift { from { transform: translateX(-10px); } to { transform: translateX(14px); } }
+      .scene .sunc { fill: #ffd34a; filter: drop-shadow(0 0 12px rgba(255,210,60,.9)); }
+      .scene .sunc.dim { fill: #f3e2a6; filter: none; opacity: .8; }
+      .scene .moon { fill: #f1f3f8; } .scene .star { fill: #fff; }
+      .scene .drop { stroke: #3b82d6; stroke-width: 2.4; stroke-linecap: round; animation: hc-rain .9s linear infinite; }
+      @keyframes hc-rain { from { transform: translateY(-6px); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(40px); opacity: 0; } }
+      .scene .gust { fill: none; stroke: rgba(255,255,255,.85); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 60 200; animation: hc-gust 2.2s linear infinite; }
+      .scene .gust.g2 { animation-delay: .8s; }
+      @keyframes hc-gust { from { stroke-dashoffset: 260; } to { stroke-dashoffset: 0; } }
+      .scene .hill { fill: rgba(70,120,70,.35); } .night .scene .hill { fill: rgba(20,30,45,.6); }
+      .hilo { display: flex; flex-direction: column; align-items: flex-end; font-size: 20px; font-weight: 800; line-height: 1.25; }
+      .windrow { display: flex; align-items: center; gap: 16px; margin: 16px 0 4px; }
+      .compass { width: 96px; height: 96px; flex: none; }
+      .compass .ring { fill: var(--hc-tile); stroke: var(--hc-track); stroke-width: 2; }
+      .compass text { font-size: 10px; font-weight: 700; fill: var(--hc-fg2); text-anchor: middle; dominant-baseline: middle; }
+      .compass .fan { fill: color-mix(in srgb, var(--hc-blue) 22%, transparent); }
+      .compass .arrow { fill: var(--hc-blue); } .compass .shaft { stroke: var(--hc-blue); stroke-width: 3; stroke-linecap: round; }
+      @media (prefers-reduced-motion: reduce) { .scene .clouds, .scene .drop, .scene .gust { animation: none; } }`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Synology DiskStation
+// ---------------------------------------------------------------------------
+// translation_key (Integration synology_dsm) -> Rolle, mit Ausweichmuster auf die entity_id
+const HC_NAS_MAIN = {
+  cpu: [["cpu_total_load"], /cpu.*(gesamt|total)/],
+  ram: [["memory_real_usage"], /speichernutzung|memory_real_usage|memory_usage/],
+  up: [["network_up"], /upload|network_up/],
+  down: [["network_down"], /download|network_down/],
+  temp: [["temperature"], /^sensor\.[a-z0-9_]+_(temperatur|temperature)$/],
+  security: [["status"], /sicherheit|security/],
+  uptime: [["uptime"], /uptime|letzter_start|betriebszeit/],
+};
+
+class HcDiskStationCard extends HcBaseCard {
+  static getStubConfig() {
+    return {};
+  }
+
+  static getConfigElement() {
+    return document.createElement("hc-diskstation-card-editor");
+  }
+
+  _emptyText() {
+    return "Keine Synology DiskStation gefunden (Integration „Synology DSM“).";
+  }
+
+  _discover() {
+    const hass = this._hass;
+    if (!hass?.entities) return;
+    const ents = Object.values(hass.entities).filter((e) => e.platform === "synology_dsm");
+    if (!ents.length) return;
+    const devName = (id) => {
+      const d = hass.devices?.[id];
+      return d?.name_by_user || d?.name || "";
+    };
+    // Hauptgerät: das, über das die Platten angebunden sind; sonst das mit CPU-Wert
+    let main = this._config.device_id;
+    if (!main) {
+      const drive = ents.find((e) => /\(Drive \d+\)|disk_/.test(devName(e.device_id) + (e.translation_key || "")));
+      main = drive && hass.devices?.[drive.device_id]?.via_device_id;
+      if (!main) main = ents.find((e) => e.translation_key === "cpu_total_load" || /cpu/.test(e.entity_id))?.device_id;
+    }
+    if (!main) return;
+    const map = {};
+    const mainEnts = ents.filter((e) => e.device_id === main);
+    for (const [role, [keys, re]] of Object.entries(HC_NAS_MAIN)) {
+      const hit = mainEnts.find((e) => keys.includes(e.translation_key)) || mainEnts.find((e) => re.test(e.entity_id));
+      if (hit) map[role] = hit.entity_id;
+    }
+    const upd = mainEnts.find((e) => e.entity_id.startsWith("update."));
+    if (upd) map.update = upd.entity_id;
+    // Platten und Volumes über ihre Untergeräte
+    const drives = [], volumes = [];
+    for (const [id, d] of Object.entries(hass.devices || {})) {
+      if (d.via_device_id !== main) continue;
+      const name = d.name_by_user || d.name || "";
+      const own = ents.filter((e) => e.device_id === id);
+      const pick = (keys, re) => (own.find((e) => keys.includes(e.translation_key)) || own.find((e) => re.test(e.entity_id)))?.entity_id;
+      const dm = name.match(/Drive (\d+)/i);
+      const vm = name.match(/Volume (\d+)/i);
+      if (dm || own.some((e) => e.translation_key === "disk_status")) {
+        const n = dm ? parseInt(dm[1], 10) : drives.length + 1;
+        drives.push({
+          n, model: d.model, status: pick(["disk_status"], /_status$/),
+          temp: pick(["disk_temp"], /temp/), bad: pick(["disk_exceed_bad_sector_thr"], /sektor|sector/),
+          life: pick(["disk_below_remain_life_thr"], /lebensdauer|remain_life/),
+        });
+      } else if (vm || own.some((e) => e.translation_key === "volume_status")) {
+        volumes.push({
+          n: vm ? parseInt(vm[1], 10) : volumes.length + 1, status: pick(["volume_status"], /_status$/),
+          pct: pick(["volume_percentage_used"], /nutzung|percentage|verwendet/),
+          used: pick(["volume_size_used"], /belegt|size_used/),
+          tmax: pick(["volume_disk_temp_max"], /maximal|temp_max/),
+        });
+      }
+    }
+    drives.sort((a, b) => a.n - b.n);
+    volumes.sort((a, b) => a.n - b.n);
+    drives.forEach((dr) => {
+      for (const k of ["status", "temp", "bad", "life"]) if (dr[k]) map[`drive${dr.n}_${k}`] = dr[k];
+    });
+    volumes.forEach((v) => {
+      for (const k of ["status", "pct", "used", "tmax"]) if (v[k]) map[`vol${v.n}_${k}`] = v[k];
+    });
+    this._drives = drives;
+    this._volumes = volumes;
+    this._deviceId = main;
+    this._map = map;
+  }
+
+  _rate(key) {
+    const st = this._st(key);
+    const v = st ? parseFloat(st.state) : NaN;
+    if (!Number.isFinite(v)) return { text: "–", bps: 0 };
+    const unit = st.attributes.unit_of_measurement || "kB/s";
+    const factor = { "B/s": 1, "kB/s": 1e3, "KiB/s": 1024, "MB/s": 1e6, "MiB/s": 1048576, "GB/s": 1e9, "kbit/s": 125, "Mbit/s": 125000 }[unit] ?? 1e3;
+    const bps = v * factor;
+    const text = bps >= 1e6 ? `${this._fmt(bps / 1e6, 1)} MB/s` : `${this._fmt(bps / 1e3, 0)} kB/s`;
+    return { text, bps };
+  }
+
+  _diskState(dr) {
+    const s = this._st(`drive${dr.n}_status`)?.state;
+    const bad = this._on(`drive${dr.n}_bad`) === true;
+    const life = this._on(`drive${dr.n}_life`) === true;
+    if (s === undefined || s === "unavailable") return { cls: "off", text: "nicht erreichbar" };
+    if (bad) return { cls: "bad", text: "zu viele fehlerhafte Sektoren" };
+    if (life) return { cls: "warn", text: "Restlebensdauer gering" };
+    if (s === "normal") return { cls: "ok", text: "in Ordnung" };
+    if (s === "not_use" || s === "not_initialized") return { cls: "off", text: "nicht genutzt" };
+    const de = { crashed: "defekt", failing: "fällt aus", warning: "Warnung", abnormal: "auffällig", initialized: "wird eingerichtet" };
+    return { cls: s === "crashed" || s === "failing" ? "bad" : "warn", text: de[s] || s };
+  }
+
+  _security() {
+    const st = this._st("security");
+    if (!st || st.state !== "on") return [];
+    const names = { malware: "Malware", network: "Netzwerk", securitySetting: "Sicherheitseinstellungen",
+      systemCheck: "Systemprüfung", update: "Updates", userInfo: "Benutzerkonten" };
+    return Object.entries(names).filter(([k]) => st.attributes[k] && st.attributes[k] !== "safe").map(([, n]) => n);
+  }
+
+  _hero(drives, up, down) {
+    const n = Math.max(2, Math.min(8, drives.length || 4));
+    const w = 150, x0 = 125, bayW = (w - 24) / n;
+    const bays = Array.from({ length: n }, (_, i) => {
+      const dr = drives[i];
+      const cls = dr ? this._diskState(dr).cls : "off";
+      const x = x0 + 12 + i * bayW;
+      return `<rect class="bay" x="${x + 2}" y="58" width="${bayW - 4}" height="96" rx="3"/>
+        <circle class="led ${cls}" cx="${x + bayW / 2}" cy="70" r="3.4"/>
+        <line class="grip" x1="${x + 8}" y1="138" x2="${x + bayW - 8}" y2="138"/>`;
+    }).join("");
+    const flow = (on, cls, d) => `<path class="flow ${on ? "on" : ""} ${cls}" d="${d}"/>`;
+    return `
+      <div class="hero nas">
+        <div class="hero__top"><div class="hero__title">${hcEsc(this._config.title || this._devName())}</div>${this._pill(5 * 60000)}</div>
+        <svg class="scene" viewBox="0 0 400 190" role="img" aria-label="DiskStation">
+          <rect class="box" x="${x0}" y="40" width="${w}" height="128" rx="10"/>
+          ${bays}
+          <circle class="pwr" cx="${x0 + w - 14}" cy="50" r="3"/>
+          ${flow(up.bps > 5000, "up", `M${x0 + w + 6} 90 C ${x0 + w + 40} 90 330 80 370 70`)}
+          ${flow(down.bps > 5000, "down", `M370 120 C 330 110 ${x0 + w + 40} 120 ${x0 + w + 6} 120`)}
+          <g class="cloudicon" transform="translate(352 84) scale(1.4)"><path d="${HC_ICONS.cloud}"/></g>
+          <line class="ground" x1="20" y1="169" x2="380" y2="169"/>
+        </svg>
+      </div>`;
+  }
+
+  _devName() {
+    const d = this._hass.devices?.[this._deviceId];
+    return d?.name_by_user || d?.name || "DiskStation";
+  }
+
+  _render() {
+    const drives = this._drives || [];
+    const vol = (this._volumes || [])[0];
+    const dev = this._hass.devices?.[this._deviceId] || {};
+    const up = this._rate("up"), down = this._rate("down");
+    const pct = vol ? this._num(`vol${vol.n}_pct`) : null;
+    const used = vol ? this._num(`vol${vol.n}_used`) : null;
+    const usedUnit = vol ? this._st(`vol${vol.n}_used`)?.attributes.unit_of_measurement || "TB" : "TB";
+    const free = pct && used !== null && pct > 0 ? (used / pct) * (100 - pct) : null;
+    const volState = vol ? this._st(`vol${vol.n}_status`)?.state : null;
+    // Statuszeile: das Wichtigste zuerst
+    const badDisks = drives.map((d) => ({ d, s: this._diskState(d) })).filter((x) => x.s.cls === "bad" || x.s.cls === "warn");
+    const sec = this._security();
+    const updateOn = this._st("update")?.state === "on";
+    let title, sub, level = "ok";
+    if (badDisks.length) {
+      level = badDisks.some((x) => x.s.cls === "bad") ? "bad" : "warn";
+      title = `Platte ${badDisks.map((x) => x.d.n).join(", ")}: ${badDisks[0].s.text}`;
+      sub = "Datensicherung prüfen";
+    } else if (volState && volState !== "normal") {
+      const vde = { degraded: "eingeschränkt", crashed: "defekt", attention: "Achtung", repairing: "wird repariert", expanding: "wird erweitert" };
+      level = volState === "crashed" ? "bad" : "warn"; title = `Volume ${vol.n}: ${vde[volState] || volState}`; sub = "Speicher-Manager in DSM prüfen";
+    } else if (updateOn) {
+      level = "warn"; title = "DSM-Update verfügbar"; sub = this._st("update").attributes.latest_version || "";
+    } else if (sec.length) {
+      level = "warn"; title = "Sicherheitsberater: Hinweise"; sub = sec.join(" · ");
+    } else {
+      title = "Alles in Ordnung"; sub = [dev.model, dev.sw_version].filter(Boolean).join(" · ");
+    }
+    const fill = pct === null ? 0 : Math.max(0, Math.min(100, pct));
+    const barCls = fill >= 90 ? "bad" : fill >= 80 ? "warn" : "ok";
+    const diskRows = drives.map((dr) => {
+      const s = this._diskState(dr);
+      const t = this._num(`drive${dr.n}_temp`);
+      return `<button class="disk click" data-more="drive${dr.n}_temp" aria-label="Platte ${dr.n}: Temperaturverlauf">
+        <span class="led2 ${s.cls}"></span><span class="dn">Platte ${dr.n}</span>
+        <span class="dm">${hcEsc((dr.model || "").trim())}</span>
+        <span class="ds ${s.cls}">${hcEsc(s.text)}</span><span class="dt">${this._fmt(t, 0)} °C</span></button>`;
+    }).join("");
+    return `
+      ${this._hero(drives, up, down)}
+      <div class="main">
+        <div class="head ${level}">${hcEsc(title)}</div>
+        <div class="sub">${hcEsc(sub)}</div>
+        <div class="big">
+          <button class="soc click" data-more="${vol ? `vol${vol.n}_pct` : ""}" aria-label="Belegung: Verlauf anzeigen">
+            <span class="bn">${this._fmt(pct, 0)}</span><span class="bu">%</span><div class="bl">belegt${vol ? ` · Volume ${vol.n}` : ""}</div></button>
+          <div class="right"><span class="bn2">${free === null ? "–" : `${this._fmt(free, 1)} ${hcEsc(usedUnit)}`}</span><div class="bl">frei</div></div>
+        </div>
+        <div class="bar"><span class="fill ${barCls}" style="width:${fill}%"></span></div>
+        <div class="barlbl"><span>${used === null ? "" : `${this._fmt(used, 2)} ${hcEsc(usedUnit)} belegt`}</span><span>${free === null || pct === null ? "" : `${this._fmt(used + free, 1)} ${hcEsc(usedUnit)} gesamt`}</span></div>
+        <div class="tiles">
+          ${this._tile("cpu", `${this._fmt(this._num("cpu"), 0)} %`, "CPU", "", "cpu")}
+          ${this._tile("memory", `${this._fmt(this._num("ram"), 0)} %`, "Arbeitsspeicher", "", "ram")}
+          ${this._tile("upload", up.text, "Upload", up.bps > 5000 ? "green" : "", "up")}
+          ${this._tile("download", down.text, "Download", down.bps > 5000 ? "blue" : "", "down")}
+        </div>
+      </div>
+      <div class="disks">${diskRows}</div>
+      <div class="foot">
+        <span>${hcIcon("thermo")}System ${this._fmt(this._num("temp"), 0)} °C${vol && this._num(`vol${vol.n}_tmax`) !== null ? ` · Platten max. ${this._fmt(this._num(`vol${vol.n}_tmax`), 0)} °C` : ""}</span>
+        <span>${hcIcon("shield")}${sec.length ? `Sicherheitsberater: ${hcEsc(sec.join(", "))}` : "Sicherheitsberater: keine Hinweise"}</span>
+      </div>`;
+  }
+
+  _styles() {
+    return `
+      .hero.nas { background: linear-gradient(180deg, #5f6f86 0%, #93a3b8 55%, #d6dee8 100%); }
+      .scene .box { fill: #2b2f36; stroke: #1b1e23; stroke-width: 2; }
+      .scene .bay { fill: #3a3f48; stroke: #4b515c; }
+      .scene .grip { stroke: #5b626e; stroke-width: 2; stroke-linecap: round; }
+      .scene .pwr { fill: #4aa3ff; filter: drop-shadow(0 0 4px #4aa3ff); }
+      .scene .led.ok { fill: #3ddc84; filter: drop-shadow(0 0 3px #3ddc84); }
+      .scene .led.warn { fill: #f0b429; filter: drop-shadow(0 0 3px #f0b429); }
+      .scene .led.bad { fill: #ff5f57; filter: drop-shadow(0 0 4px #ff5f57); animation: hc-blink 1s steps(2) infinite; }
+      .scene .led.off { fill: #555b66; }
+      @keyframes hc-blink { 50% { opacity: .25; } }
+      .scene .cloudicon path { fill: #eef3f8; }
+      .scene .flow.up { --c: #3ddc84; } .scene .flow.down { --c: #4aa3ff; }
+      .head.warn { color: #b7791f; } .head.bad { color: var(--hc-red); }
+      .fill.ok { background: var(--hc-blue); } .fill.warn { background: var(--hc-amber); } .fill.bad { background: var(--hc-red); }
+      .disks { border-top: 1px solid var(--divider-color, #e1e6ee); padding: 6px 8px; }
+      .disk { display: grid; grid-template-columns: 14px auto 1fr auto auto; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border-radius: 12px; text-align: left; }
+      .led2 { width: 10px; height: 10px; border-radius: 50%; background: #9aa3ad; }
+      .led2.ok { background: var(--hc-green); } .led2.warn { background: var(--hc-amber); } .led2.bad { background: var(--hc-red); }
+      .dn { font-weight: 700; } .dm { color: var(--hc-fg2); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .ds { font-size: 14px; } .ds.ok { color: var(--hc-green); } .ds.warn { color: #b7791f; } .ds.bad { color: var(--hc-red); }
+      .dt { color: var(--hc-fg2); font-size: 14px; min-width: 44px; text-align: right; }`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Gemeinsame Gestaltung
+// ---------------------------------------------------------------------------
+const HC_STYLES = `
+  :host { --hc-tile: color-mix(in srgb, var(--primary-text-color, #1c2b4a) 7%, transparent);
+          --hc-track: color-mix(in srgb, var(--primary-text-color, #1c2b4a) 14%, transparent);
+          --hc-fg: var(--primary-text-color, #14213d); --hc-fg2: var(--secondary-text-color, #5b6b82);
+          --hc-blue: #2f7fe0; --hc-green: #2fa864; --hc-amber: #e8a317; --hc-red: #d9534f; }
+  ha-card { display: block; overflow: hidden; color: var(--hc-fg); background: var(--ha-card-background, var(--card-background-color, #fff));
+            border-radius: var(--ha-card-border-radius, 12px); }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+  .ic { width: 24px; height: 24px; fill: currentColor; flex: none; }
+  .ic.amber { fill: var(--hc-amber); } .ic.green { fill: var(--hc-green); } .ic.blue { fill: var(--hc-blue); }
+  .empty { padding: 24px; color: var(--hc-fg2); }
+  .hero { position: relative; }
+  .hero__top { position: absolute; inset: 14px 16px auto 16px; display: flex; justify-content: space-between; align-items: center; z-index: 1; }
+  .hero__title { color: #fff; font-size: 22px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
+  .pill { display: inline-flex; align-items: center; gap: 8px; background: rgba(40,45,55,.55); color: #fff; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #3ddc84; } .dot.bad { background: #ff5f57; }
+  .scene { display: block; width: 100%; height: auto; padding-top: 40px; }
+  .scene .ground { stroke: rgba(255,255,255,.45); stroke-width: 2; }
+  .scene .flow { fill: none; stroke: var(--c); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 2 12; opacity: .2; }
+  .scene .flow.on { opacity: 1; animation: hc-flow 1.1s linear infinite; }
+  @keyframes hc-flow { to { stroke-dashoffset: -28; } }
+  @media (prefers-reduced-motion: reduce) { .scene .flow.on { animation: none; stroke-dasharray: none; } }
+  .main { padding: 18px 20px 6px; }
+  .head { font-size: 22px; font-weight: 700; line-height: 1.25; }
+  .sub { color: var(--hc-fg2); margin-top: 4px; }
+  .big { display: flex; justify-content: space-between; align-items: flex-end; margin: 18px 0 12px; }
+  .big .right { text-align: right; }
+  .soc { text-align: left; border-radius: 12px; padding: 2px 6px; margin: -2px -6px; }
+  .bn { font-size: 52px; font-weight: 800; line-height: 1; } .bu { font-size: 20px; color: var(--hc-fg2); margin-left: 3px; }
+  .bn2 { font-size: 28px; font-weight: 800; } .bl { color: var(--hc-fg2); margin-top: 6px; }
+  .bar { position: relative; height: 14px; background: var(--hc-track); border-radius: 999px; }
+  .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; transition: width .6s; }
+  .barlbl { display: flex; justify-content: space-between; color: var(--hc-fg2); font-size: 14px; margin-top: 10px; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 18px 0 12px; }
+  .tile { display: flex; align-items: center; gap: 14px; background: var(--hc-tile); border-radius: 16px; padding: 14px 16px; text-align: left; width: 100%; }
+  .tile .ic { fill: var(--hc-fg2); } .tile .ic.amber { fill: var(--hc-amber); } .tile .ic.green { fill: var(--hc-green); } .tile .ic.blue { fill: var(--hc-blue); }
+  .tv { font-size: 18px; font-weight: 700; } .tl { color: var(--hc-fg2); font-size: 14px; }
+  .click { cursor: pointer; transition: background .15s; }
+  .click:hover, .click:focus-visible { background: color-mix(in srgb, var(--hc-fg) 12%, transparent); outline: none; }
+  .foot { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--divider-color, #e1e6ee); padding: 14px 20px 16px; color: var(--hc-fg2); font-size: 14px; }
+  .foot span { display: flex; align-items: center; gap: 10px; }
+  .foot .ic { width: 18px; height: 18px; fill: var(--hc-fg2); }
+  .foot .warn { color: var(--hc-red); } .foot .warn .ic { fill: var(--hc-red); }
+`;
+
+// ---------------------------------------------------------------------------
+// Editoren (Titel; Wetterstation zusätzlich Entitäten-Zuordnung über YAML)
+// ---------------------------------------------------------------------------
+class HcSimpleEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = { ...config };
+    if (!this.shadowRoot) this.attachShadow({ mode: "open" });
+    this.shadowRoot.innerHTML = `
+      <style>label{display:block;margin:10px 0 4px;font-weight:600}input{width:100%;box-sizing:border-box;padding:8px;font:inherit}
+      .hint{color:var(--secondary-text-color);font-size:13px;margin-top:6px}</style>
+      <label for="t">Titel</label><input id="t" value="${hcEsc(this._config.title || "")}" placeholder="Standard: Gerätename">
+      <div class="hint">${this.constructor.hint}</div>`;
+    this.shadowRoot.getElementById("t").addEventListener("change", (ev) => {
+      const cfg = { ...this._config };
+      const v = ev.target.value.trim();
+      if (v) cfg.title = v; else delete cfg.title;
+      this._config = cfg;
+      this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: cfg }, bubbles: true, composed: true }));
+    });
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+  }
+}
+class HcWeatherEditor extends HcSimpleEditor {
+  static hint = "Die Entitäten werden automatisch gefunden. Andere Stationen im YAML-Editor zuordnen: entities: { temperature, humidity, wind_speed, wind_direction, rain_total, raining, sunshine, brightness, battery_low }.";
+}
+class HcNasEditor extends HcSimpleEditor {
+  static hint = "Die DiskStation wird über die Integration „Synology DSM“ automatisch gefunden. Bei mehreren Geräten im YAML-Editor device_id angeben.";
+}
+
+const hcDefine = (tag, cls) => { if (!customElements.get(tag)) customElements.define(tag, cls); };
+hcDefine("hc-weather-station-card", HcWeatherStationCard);
+hcDefine("hc-diskstation-card", HcDiskStationCard);
+hcDefine("hc-weather-station-card-editor", HcWeatherEditor);
+hcDefine("hc-diskstation-card-editor", HcNasEditor);
+window.customCards = window.customCards || [];
+for (const c of [
+  { type: "hc-weather-station-card", name: "Wetterstation (ha-cards)", description: "Himmel nach Messwerten, Temperatur mit Hoch/Tief, Windrose, Regen und Sonne heute." },
+  { type: "hc-diskstation-card", name: "DiskStation (ha-cards)", description: "Synology NAS mit Plattenstatus, Belegung, CPU/RAM, Netzwerk und Sicherheitsberater." },
+]) if (!window.customCards.some((x) => x.type === c.type)) window.customCards.push({ ...c, preview: true });
+console.info(`%c HA-CARDS %c ${HC_VERSION} `, "background:#2f7fe0;color:#fff;border-radius:3px 0 0 3px", "background:#14213d;color:#fff;border-radius:0 3px 3px 0");

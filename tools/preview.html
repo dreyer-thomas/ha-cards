@@ -1,0 +1,60 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;padding:16px;font-family:Inter,system-ui,sans-serif;background:var(--bg)}
+:root{--bg:#eef1f5;--primary-text-color:#14213d;--secondary-text-color:#5b6b82;--divider-color:#e1e6ee;--card-background-color:#fff}
+body.dark{--bg:#111;--primary-text-color:#e8ecf2;--secondary-text-color:#9aa6b8;--divider-color:#2c3340;--card-background-color:#1c1f26}
+#wrap{width:420px}
+</style></head><body><div id="wrap"></div>
+<script src="../dist/ha-cards.js"></script>
+<script>
+// Vorschau mit Beispieldaten: tools/preview.html?card=weather|nas&scene=...
+const q = new URLSearchParams(location.search);
+const scen = window.SCEN || {};
+const now = Date.now(), iso = (ms)=>new Date(now-ms).toISOString();
+const states={}, entities={}, devices={
+  wx:{name:'Wetterstation',model:'HM-WDS100-C6-O'},
+  nas:{name:'DiskStation',model:'DS415play',sw_version:'DSM 7.1.1-42962 Update 9'},
+  d1:{name:'DiskStation (Drive 1)',model:'WD60EFRX-68MYMN1',via_device_id:'nas'},d2:{name:'DiskStation (Drive 2)',model:'WD60EFRX-68MYMN1',via_device_id:'nas'},
+  d3:{name:'DiskStation (Drive 3)',model:'WD60EFRX-68MYMN1',via_device_id:'nas'},d4:{name:'DiskStation (Drive 4)',model:'WD60EFRX-68MYMN1',via_device_id:'nas'},
+  v1:{name:'DiskStation (Volume 1)',model:'DS415play',via_device_id:'nas'}};
+function add(id, state, dev, opts={}){ states[id]={entity_id:id,state:String(state),attributes:opts.attr||{},last_updated:iso(opts.age??8000),last_changed:iso(opts.changed??(opts.age??8000))};
+  entities[id]={entity_id:id,device_id:dev,platform:opts.platform||'homematicip_local',translation_key:opts.tk}; }
+const W = scen.wx || {};
+const wx=(id,p,v,o={})=>add(id,v,'wx',{...o,attr:{parameter:p,...(o.attr||{})}});
+wx('sensor.wetterstation_ch_temperatur','TEMPERATURE',W.temp??4.3,{attr:{unit_of_measurement:'°C'}});
+wx('sensor.wetterstation_ch_luftfeuchtigkeit','HUMIDITY',W.hum??74);
+wx('sensor.wetterstation_ch_windgeschwindigkeit','WIND_SPEED',W.wind??11);
+wx('sensor.wetterstation_ch_windrichtung_2','WIND_DIRECTION',W.dir??225);
+wx('sensor.wetterstation_ch_windrichtung','WIND_DIRECTION_RANGE',W.range??45);
+wx('sensor.wetterstation_ch_regenzahler','RAIN_COUNTER',W.rain??551.5);
+wx('binary_sensor.wetterstation_ch_regen','RAINING',W.raining??'off');
+wx('sensor.wetterstation_ch_sonnenscheindauer','SUNSHINEDURATION',W.sun??63,{changed:W.sunChanged??3600e3});
+wx('sensor.wetterstation_ch_helligkeit','BRIGHTNESS',W.bright??250);
+wx('binary_sensor.wetterstation_batterie','LOWBAT',W.lowbat??'off');
+states['sun.sun']={entity_id:'sun.sun',state:W.night?'below_horizon':'above_horizon',attributes:{},last_updated:iso(0),last_changed:iso(0)};
+const N = scen.nas || {};
+const nas=(id,v,dev,tk,attr={})=>add(id,v,dev,{platform:'synology_dsm',tk,attr});
+nas('sensor.diskstation_cpu_auslastung_gesamt',N.cpu??12,'nas','cpu_total_load',{unit_of_measurement:'%'});
+nas('sensor.diskstation_speichernutzung_real',60,'nas','memory_real_usage',{unit_of_measurement:'%'});
+nas('sensor.diskstation_upload_durchsatz',N.up??5025.8,'nas','network_up',{unit_of_measurement:'kB/s'});
+nas('sensor.diskstation_download_durchsatz',N.down??3.2,'nas','network_down',{unit_of_measurement:'kB/s'});
+nas('sensor.diskstation_temperatur',41,'nas','temperature',{unit_of_measurement:'°C'});
+nas('binary_sensor.diskstation_sicherheitsstatus','on','nas','status',{malware:'safe',network:'risk',securitySetting:'safe',systemCheck:'safe',update:'outOfDate',userInfo:'safe'});
+nas('update.diskstation_dsm_update',N.update??'off','nas',undefined,{latest_version:'DSM 7.2.2-72806'});
+for (const i of [1,2,3,4]) { nas(`sensor.diskstation_drive_${i}_status`,(N.bad===i?'crashed':'normal'),'d'+i,'disk_status');
+  nas(`sensor.diskstation_drive_${i}_temperatur`,33+i,'d'+i,'disk_temp',{unit_of_measurement:'°C'});
+  nas(`binary_sensor.diskstation_drive_${i}_max_fehlerhafte_sektoren_uberschritten`,'off','d'+i,'disk_exceed_bad_sector_thr');
+  nas(`binary_sensor.diskstation_drive_${i}_unterhalb_der_mindestrestlebensdauer`,'off','d'+i,'disk_below_remain_life_thr'); }
+nas('sensor.diskstation_volume_1_status','normal','v1','volume_status');
+nas('sensor.diskstation_volume_1_verwendetes_volumen',N.pct??37.7,'v1','volume_percentage_used',{unit_of_measurement:'%'});
+nas('sensor.diskstation_volume_1_belegter_speicherplatz',N.used??6.576,'v1','volume_size_used',{unit_of_measurement:'TB'});
+nas('sensor.diskstation_volume_1_maximale_festplattentemperatur',38,'v1','volume_disk_temp_max',{unit_of_measurement:'°C'});
+const midnight=new Date(); midnight.setHours(0,0,0,0);
+const hass={states,entities,devices,locale:{language:'de'},language:'de',callService:()=>Promise.resolve(),
+ callWS:(m)=>{const res={}; const h=(o)=>({start:midnight.getTime()+o*3600e3});
+  res['sensor.wetterstation_ch_temperatur']=[{...h(-1),state:3.1,min:3,max:3.4},{...h(0),min:1.8,max:2.6},{...h(4),min:0.9,max:1.5},{...h(9),min:3.2,max:5.6}];
+  res['sensor.wetterstation_ch_regenzahler']=[{...h(-1),state:549.3,change:0},{...h(2),change:1.4}];
+  res['sensor.wetterstation_ch_sonnenscheindauer']=[{...h(-1),state:0,change:0}];
+  return Promise.resolve(res);}};
+const card=document.createElement(q.get('card')==='nas'?'hc-diskstation-card':'hc-weather-station-card');
+card.setConfig({}); document.getElementById('wrap').appendChild(card); card.hass=hass; window.card=card;
+</script></body></html>
