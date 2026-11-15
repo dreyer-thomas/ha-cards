@@ -3,6 +3,9 @@
  *
  *   custom:hc-weather-station-card   Wetterstation (Homematic HM-WDS100 u. ä.)
  *   custom:hc-diskstation-card       Synology DiskStation (Integration synology_dsm)
+ *   custom:hc-dishwasher-card        Geschirrspüler (Integration home_connect)
+ *   custom:hc-wallbox-card           Tesla Wall Connector (Integration tesla_wall_connector)
+ *   custom:hc-printer-card           Drucker (Integration ipp)
  *
  * Beide Karten finden ihre Entitäten selbst; die minimale Konfiguration ist nur der Typ.
  * Gestaltung angelehnt an die Karten von BavarianData (Chris Krammer, MIT),
@@ -10,7 +13,7 @@
  * MIT-Lizenz, Nutzung auf eigene Verantwortung.
  */
 
-const HC_VERSION = "0.1.0";
+const HC_VERSION = "0.2.0";
 
 // Material-Design-Icons (Apache 2.0, Pictogrammers) als Inline-SVG
 const HC_ICONS = {
@@ -28,6 +31,15 @@ const HC_ICONS = {
   disk: "M6,2H18A2,2 0 0,1 20,4V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V4A2,2 0 0,1 6,2M12,4A6,6 0 0,0 6,10C6,13.31 8.69,16 12.1,16L11.22,13.77C10.95,13.29 11.11,12.68 11.59,12.4L12.45,11.9C12.93,11.63 13.54,11.79 13.82,12.27L15.74,14.69C17.12,13.59 18,11.9 18,10A6,6 0 0,0 12,4M12,9A1,1 0 0,1 13,10A1,1 0 0,1 12,11A1,1 0 0,1 11,10A1,1 0 0,1 12,9M7,18A1,1 0 0,0 6,19A1,1 0 0,0 7,20A1,1 0 0,0 8,19A1,1 0 0,0 7,18M12.09,13.27L14.58,19.58L17.17,18.08L12.95,12.77L12.09,13.27Z",
   shield: "M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z",
   alert: "M13,14H11V9H13M13,18H11V16H13M1,21H23L12,2L1,21Z",
+  printer: "M18,3H6V7H18M19,12A1,1 0 0,1 18,11A1,1 0 0,1 19,10A1,1 0 0,1 20,11A1,1 0 0,1 19,12M16,19H8V14H16M19,8H5A3,3 0 0,0 2,11V17H6V21H18V17H22V11A3,3 0 0,0 19,8Z",
+  ev: "M19.77,7.23L19.78,7.22L16.06,3.5L15,4.56L17.11,6.67C16.17,7.03 15.5,7.93 15.5,9A2.5,2.5 0 0,0 18,11.5C18.36,11.5 18.69,11.42 19,11.29V18.5A1,1 0 0,1 18,19.5A1,1 0 0,1 17,18.5V14A2,2 0 0,0 15,12H14V5A2,2 0 0,0 12,3H6A2,2 0 0,0 4,5V21H14V13.5H15.5V18.5A2.5,2.5 0 0,0 18,21A2.5,2.5 0 0,0 20.5,18.5V9C20.5,8.31 20.22,7.68 19.77,7.23M18,10A1,1 0 0,1 17,9A1,1 0 0,1 18,8A1,1 0 0,1 19,9A1,1 0 0,1 18,10M8,18V13.5H6L10,6V11H12L8,18Z",
+  clock: "M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z",
+  door: "M8,3C6.89,3 6,3.89 6,5V21H18V5C18,3.89 17.11,3 16,3H8M8,5H16V19H8V5M13,11V13H15V11H13Z",
+  bolt: "M11,15H6L13,1V9H18L11,23V15Z",
+  chart: "M22,21H2V3H4V19H6V10H10V19H12V6H16V19H18V14H22V21Z",
+  play: "M8,5.14V19.14L19,12.14L8,5.14Z",
+  stop: "M18,18H6V6H18V18Z",
+  salt: "M12,2L9,9H15L12,2M7,10A2,2 0 0,0 5,12V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V12A2,2 0 0,0 17,10H7Z",
 };
 
 const hcIcon = (name, cls = "") =>
@@ -85,6 +97,53 @@ class HcBaseCard extends HTMLElement {
     return s ? s.state === "on" : null;
   }
 
+  // Zustand als Text in der Sprache von HA (Übersetzungen der Integration), sonst eigene Tabelle
+  _stateText(key, fallback = {}) {
+    const st = this._st(key);
+    if (!st) return "–";
+    if (fallback[st.state]) return fallback[st.state];
+    try {
+      if (this._hass.formatEntityState) return this._hass.formatEntityState(st);
+    } catch (e) { /* ältere Frontends */ }
+    return st.state;
+  }
+
+  // Entitäten einer Integration nach Rollen zuordnen: {rolle: [[translation_keys], /muster in entity_id/]}
+  _discoverPlatform(platform, roles, anchorRole) {
+    const hass = this._hass;
+    if (!hass?.entities) return null;
+    const ents = Object.values(hass.entities).filter((e) => e.platform === platform);
+    if (!ents.length) return null;
+    const match = (e, [keys, re]) => keys.includes(e.translation_key) || (re && re.test(e.entity_id));
+    let device = this._config.device_id;
+    if (!device) device = (ents.find((e) => match(e, roles[anchorRole])) || ents[0]).device_id;
+    const own = ents.filter((e) => e.device_id === device);
+    const map = {};
+    for (const [role, spec] of Object.entries(roles)) {
+      const hit = own.find((e) => spec[0].includes(e.translation_key)) || own.find((e) => spec[1] && spec[1].test(e.entity_id));
+      if (hit) map[role] = hit.entity_id;
+    }
+    for (const [role, id] of Object.entries(this._config.entities || {})) if (id) map[role] = id;
+    this._deviceId = device;
+    return { map, own };
+  }
+
+  _devName(fallback) {
+    const d = this._hass.devices?.[this._deviceId];
+    return d?.name_by_user || d?.name || fallback;
+  }
+
+  _clock(t) {
+    return new Date(t).toLocaleTimeString(this._lang, { hour: "2-digit", minute: "2-digit" });
+  }
+
+  _confirmCall(question, domain, service, data) {
+    if (!window.confirm(question)) return;
+    this._hass.callService(domain, service, data).catch((err) => {
+      this.dispatchEvent(new CustomEvent("hass-notification", { detail: { message: err?.message || String(err) }, bubbles: true, composed: true }));
+    });
+  }
+
   // ---- Formatierung ----
   get _lang() {
     return this._hass?.locale?.language || this._hass?.language || "de";
@@ -139,6 +198,8 @@ class HcBaseCard extends HTMLElement {
   }
 
   _onClick(ev) {
+    const act = ev.composedPath().find((n) => n.dataset && n.dataset.action);
+    if (act && this._action) { this._action(act.dataset.action); return; }
     const el = ev.composedPath().find((n) => n.dataset && n.dataset.more);
     if (!el) return;
     const entityId = this._map?.[el.dataset.more];
@@ -642,6 +703,442 @@ class HcDiskStationCard extends HcBaseCard {
 }
 
 // ---------------------------------------------------------------------------
+// Geschirrspüler (Integration home_connect)
+// ---------------------------------------------------------------------------
+const HC_DW_ROLES = {
+  state: [["operation_state"], /betriebszustand|operation_state/],
+  progress: [["program_progress"], /fortschritt|program_progress/],
+  finish: [["program_finish_time", "finish_time"], /endzeit|finish_time/],
+  door: [["door"], /_tur$|_door$/],
+  salt: [["salt_nearly_empty"], /salz_fast_leer|salt_nearly_empty/],
+  rinse: [["rinse_aid_nearly_empty"], /klarspuler_fast_leer|rinse_aid_nearly_empty/],
+  finished: [["program_finished"], /programm_beendet|program_finished/],
+  active: [["active_program"], /aktives_programm|active_program/],
+  selected: [["selected_program"], /ausgewahltes_programm|selected_program/],
+  stop: [["stop_program"], /programm_stoppen|stop_program/],
+  remote_start: [["remote_start"], /fernstart|remote_start/],
+  care: [["machine_care_reminder"], /erinnerung_zur_maschinenpflege$|machine_care_reminder/],
+};
+const HC_DW_STATE = {
+  inactive: "Aus", ready: "Bereit", delayedstart: "Startvorwahl", run: "Läuft", pause: "Pause",
+  actionrequired: "Aktion erforderlich", finished: "Fertig", error: "Störung", aborting: "Wird abgebrochen",
+};
+const HC_DW_PROGRAMS = {
+  intensiv_70: "Intensiv 70°", auto_2: "Auto 45–65°", eco_50: "Eco 50°", pre_rinse: "Vorspülen",
+  night_wash: "Nachtprogramm", kurz_60: "Kurz 60°", machine_care: "Maschinenpflege", super_60: "Super 60°",
+  quick_45: "Schnell 45°", mixed_load: "Gemischte Beladung", intensiv_power: "Intensiv Power",
+};
+
+class HcDishwasherCard extends HcBaseCard {
+  static getStubConfig() { return {}; }
+  static getConfigElement() { return document.createElement("hc-generic-card-editor"); }
+  _emptyText() { return "Kein Geschirrspüler gefunden (Integration „Home Connect“)."; }
+
+  _discover() {
+    const r = this._discoverPlatform("home_connect", HC_DW_ROLES, "state");
+    if (r && r.map.state) this._map = r.map;
+  }
+
+  _program(key) {
+    const st = this._st(key);
+    if (!st || ["unknown", "unavailable", ""].includes(st.state)) return null;
+    const short = st.state.replace(/^.*_program_/, "");
+    if (HC_DW_PROGRAMS[short]) return HC_DW_PROGRAMS[short];
+    try { if (this._hass.formatEntityState) return this._hass.formatEntityState(st); } catch (e) { /* */ }
+    return short;
+  }
+
+  _flag(key) {
+    const s = this._st(key)?.state;
+    return s === "present" || s === "on";
+  }
+
+  _render() {
+    const state = this._st("state")?.state;
+    const running = state === "run" || state === "pause";
+    const delayed = state === "delayedstart";
+    const progress = this._num("progress");
+    const finishSt = this._st("finish");
+    const finish = finishSt && !["unknown", "unavailable"].includes(finishSt.state) ? Date.parse(finishSt.state) : null;
+    const remainMin = finish ? Math.max(0, Math.round((finish - Date.now()) / 60000)) : null;
+    const prog = this._program(running || delayed ? "active" : "selected") || this._program("selected");
+    const doorOpen = this._st("door")?.state === "open";
+    const salt = this._flag("salt"), rinse = this._flag("rinse"), care = this._flag("care");
+    const done = state === "finished" || this._flag("finished");
+    let title, sub, level = "";
+    if (state === "error" || state === "actionrequired") { title = HC_DW_STATE[state]; sub = "Bitte am Gerät nachsehen"; level = "bad"; }
+    else if (running) { title = `${state === "pause" ? "Pausiert" : "Läuft"}${finish ? ` · fertig um ${this._clock(finish)}` : ""}`; sub = prog || ""; }
+    else if (delayed) { title = `Startvorwahl${finish ? ` · fertig um ${this._clock(finish)}` : ""}`; sub = prog || ""; }
+    else if (done) { title = "Fertig – bitte ausräumen"; sub = prog || ""; level = "ok"; }
+    else if (doorOpen) { title = "Tür offen"; sub = prog ? `Ausgewählt: ${prog}` : ""; }
+    else { title = HC_DW_STATE[state] || this._stateText("state"); sub = prog ? `Ausgewählt: ${prog}` : ""; }
+    const hint = [salt && "Salz nachfüllen", rinse && "Klarspüler nachfüllen", care && "Maschinenpflege fällig"].filter(Boolean);
+    const remainTxt = remainMin === null ? "–" : remainMin >= 60 ? `${Math.floor(remainMin / 60)}:${String(remainMin % 60).padStart(2, "0")} h` : `${remainMin} min`;
+    const canStart = state === "ready" && this._on("remote_start") === true && this._map.active && this._program("selected");
+    const actions = running && this._map.stop
+      ? `<button class="act stop" data-action="stop">${hcIcon("stop")}Programm stoppen</button>`
+      : canStart ? `<button class="act" data-action="start">${hcIcon("play")}${hcEsc(this._program("selected"))} starten</button>` : "";
+    return `
+      ${this._heroDw(state, running, doorOpen, done, remainTxt, progress)}
+      <div class="main">
+        <div class="head ${level}">${hcEsc(title)}</div>
+        <div class="sub">${hcEsc(sub)}</div>
+        ${running || delayed ? `
+        <div class="big">
+          <button class="soc click" data-more="progress" aria-label="Fortschritt"><span class="bn">${this._fmt(progress, 0)}</span><span class="bu">%</span><div class="bl">Fortschritt</div></button>
+          <div class="right"><span class="bn2">${remainTxt}</span><div class="bl">verbleibend</div></div>
+        </div>
+        <div class="bar"><span class="fill run" style="width:${Math.max(0, Math.min(100, progress ?? 0))}%"></span></div>` : ""}
+        <div class="tiles">
+          ${this._tile("play", hcEsc(prog || "–"), running ? "Programm" : "Ausgewählt", "", running ? "active" : "selected")}
+          ${this._tile("door", doorOpen ? "offen" : this._st("door")?.state === "locked" ? "verriegelt" : "zu", "Tür", doorOpen ? "amber" : "", "door")}
+          ${this._tile("salt", salt ? "nachfüllen" : "ok", "Salz", salt ? "amber" : "green", "salt")}
+          ${this._tile("drop", rinse ? "nachfüllen" : "ok", "Klarspüler", rinse ? "amber" : "green", "rinse")}
+        </div>
+        ${actions ? `<div class="acts">${actions}</div>` : ""}
+      </div>
+      ${hint.length ? `<div class="foot"><span class="warn">${hcIcon("alert")}${hcEsc(hint.join(" · "))}</span></div>` : ""}`;
+  }
+
+  _heroDw(state, running, doorOpen, done, remainTxt, progress) {
+    const bubbles = running ? Array.from({ length: 7 }, (_, i) =>
+      `<circle class="bub" cx="${160 + i * 13}" cy="150" r="${3 + (i % 3)}" style="animation-delay:${i * 0.35}s"/>`).join("") : "";
+    const light = running || state === "delayedstart" ? `<ellipse class="infolight ${state === "delayedstart" ? "wait" : ""}" cx="200" cy="181" rx="46" ry="4"/>` : "";
+    return `
+      <div class="hero dw light">
+        <div class="hero__top"><div class="hero__title">${hcEsc(this._config.title || this._devName("Geschirrspüler"))}</div>${this._pill(30 * 60000, state === "error")}</div>
+        <svg class="scene" viewBox="0 0 400 190" role="img" aria-label="Geschirrspüler">
+          <rect class="counter" x="40" y="40" width="320" height="12" rx="3"/>
+          <rect class="cab" x="60" y="52" width="70" height="124"/><rect class="cab" x="270" y="52" width="70" height="124"/>
+          <line class="cabline" x1="95" y1="62" x2="95" y2="100"/><line class="cabline" x1="305" y1="62" x2="305" y2="100"/>
+          ${doorOpen
+            ? `<rect class="tub" x="134" y="54" width="132" height="122" rx="2"/>
+               <path class="rack" d="M146 84 H254 M146 120 H254 M152 74 v10 M168 74 v10 M184 74 v10 M200 74 v10 M216 74 v10 M232 74 v10 M248 74 v10"/>
+               <path class="door open" d="M134 176 L266 176 L282 186 L118 186 Z"/>`
+            : `<rect class="door" x="134" y="54" width="132" height="122" rx="2"/>
+               <rect class="strip" x="134" y="54" width="132" height="14"/>
+               <text class="disp" x="200" y="64.5">${running || state === "delayedstart" ? hcEsc(remainTxt) : done ? "fertig" : ""}</text>
+               <rect class="handle" x="170" y="74" width="60" height="4" rx="2"/>
+               ${running ? `<rect class="progress" x="134" y="174" width="${1.32 * Math.max(0, Math.min(100, progress ?? 0))}" height="2"/>` : ""}`}
+          ${bubbles}
+          ${done && !doorOpen ? `<g class="sparkle"><path d="M300 30 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3z"/><path d="M330 56 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/></g>` : ""}
+          ${light}
+          <line class="ground" x1="20" y1="177" x2="380" y2="177"/>
+        </svg>
+      </div>`;
+  }
+
+  _action(a) {
+    if (a === "stop") this._confirmCall("Programm wirklich stoppen?", "button", "press", { entity_id: this._map.stop });
+    if (a === "start") {
+      const sel = this._st("selected")?.state;
+      this._confirmCall(`${this._program("selected")} jetzt starten?`, "select", "select_option", { entity_id: this._map.active, option: sel });
+    }
+  }
+
+  _styles() {
+    return `
+      .hero.dw { background: linear-gradient(180deg, #c9d3df 0%, #e4e9ef 60%, #eef1f5 100%); }
+      .scene .counter { fill: #8b7a66; } .scene .cab { fill: #f4f5f7; stroke: #c6ccd5; } .scene .cabline { stroke: #aab3bf; stroke-width: 3; stroke-linecap: round; }
+      .scene .door { fill: #e9ecf0; stroke: #b9c1cc; } .scene .door.open { fill: #d5dbe3; }
+      .scene .strip { fill: #2b2f36; } .scene .disp { fill: #7fd0ff; font: 700 9px system-ui, sans-serif; text-anchor: middle; }
+      .scene .handle { fill: #a7b0bc; } .scene .progress { fill: #2f7fe0; }
+      .scene .tub { fill: #b9c3cf; } .scene .rack { stroke: #7d8896; stroke-width: 2; fill: none; }
+      .scene .bub { fill: none; stroke: rgba(47,127,224,.55); stroke-width: 1.5; animation: hc-bub 2.4s ease-in infinite; }
+      @keyframes hc-bub { from { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } to { transform: translateY(-80px); opacity: 0; } }
+      .scene .infolight { fill: #ff5a3c; opacity: .85; filter: blur(2px); } .scene .infolight.wait { fill: #4aa3ff; }
+      .scene .sparkle path { fill: #f0b429; }
+      .scene .ground { stroke: rgba(80,90,105,.25); }
+      .head.ok { color: var(--hc-green); } .head.bad { color: var(--hc-red); }
+      .fill.run { background: var(--hc-blue); }
+      .acts { display: flex; gap: 10px; margin: 4px 0 14px; }
+      .act { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; background: var(--hc-blue); color: #fff; font-weight: 600; }
+      .act .ic { fill: #fff; width: 18px; height: 18px; } .act.stop { background: var(--hc-red); }
+      @media (prefers-reduced-motion: reduce) { .scene .bub { animation: none; } }`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tesla Wall Connector (Integration tesla_wall_connector)
+// ---------------------------------------------------------------------------
+const HC_WB_ROLES = {
+  status: [["status"], /_status$/],
+  power: [["total_power_kw", "total_power"], /gesamtleistung|total_power/],
+  session: [["session_energy_wh", "session_energy"], /sitzungsenergie|session_energy/],
+  energy: [["energy_kWh", "energy_kwh", "energy"], /_energie$|_energy$/],
+  connected: [["vehicle_connected"], /fahrzeug_verbunden|vehicle_connected/],
+  contactor: [["contactor_closed"], /schutz_geschlossen|contactor/],
+  ia: [["current_a_a", "phase_a_current"], /strom_der_phase_a|current_a/],
+  ib: [["current_b_a", "phase_b_current"], /strom_der_phase_b|current_b/],
+  ic: [["current_c_a", "phase_c_current"], /strom_der_phase_c|current_c/],
+  handle: [["handle_temp_c", "handle_temperature"], /griff|handle/],
+  grid_v: [["grid_v", "grid_voltage"], /netzspannung|grid_v/],
+};
+const HC_WB_STATE = {
+  booting: "Startet", not_connected: "Kein Fahrzeug", connected: "Fahrzeug verbunden", ready: "Bereit",
+  negotiating: "Verbindet", error: "Störung", charging_finished: "Laden beendet", waiting_car: "Wartet auf Fahrzeug",
+  charging_reduced: "Lädt (reduziert)", charging: "Lädt",
+};
+
+class HcWallboxCard extends HcBaseCard {
+  static getStubConfig() { return {}; }
+  static getConfigElement() { return document.createElement("hc-generic-card-editor"); }
+  _emptyText() { return "Keine Ladestation gefunden (Integration „Tesla Wall Connector“)."; }
+
+  _discover() {
+    const r = this._discoverPlatform("tesla_wall_connector", HC_WB_ROLES, "status");
+    if (r && r.map.status) this._map = r.map;
+  }
+
+  // kWh heute und in diesem Monat aus dem Lebensdauerzähler (Tagesstatistik)
+  _ensureEnergy() {
+    const id = this._map.energy;
+    if (!id || this._eLoading) return;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (this._eAt && Date.now() - this._eAt < 600000) return;
+    if (this._eFail && Date.now() - this._eFail < 60000) return;
+    this._eLoading = true;
+    this._hass.callWS({
+      type: "recorder/statistics_during_period",
+      start_time: new Date(monthStart.getTime() - 86400e3).toISOString(),
+      statistic_ids: [id], period: "day", types: ["state"],
+    }).then((res) => {
+      const rows = res[id] || [];
+      const t = (r) => (typeof r.start === "number" ? r.start : Date.parse(r.start));
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      this._eBase = {
+        month: rows.filter((r) => t(r) < monthStart.getTime()).pop()?.state ?? null,
+        today: rows.filter((r) => t(r) < today.getTime()).pop()?.state ?? null,
+      };
+      this._eAt = Date.now(); this._eLoading = false; this._last = ""; this._paint();
+    }).catch(() => { this._eLoading = false; this._eFail = Date.now(); });
+  }
+
+  _kw() {
+    const st = this._st("power");
+    const v = st ? parseFloat(st.state) : NaN;
+    if (!Number.isFinite(v)) return null;
+    return (st.attributes.unit_of_measurement || "kW") === "W" ? v / 1000 : v;
+  }
+
+  _render() {
+    this._ensureEnergy();
+    const status = this._st("status")?.state;
+    const kw = this._kw() ?? 0;
+    const charging = status === "charging" || status === "charging_reduced" || (this._on("contactor") && kw > 0.2);
+    const connected = this._on("connected") === true || ["connected", "ready", "negotiating", "charging", "charging_reduced", "charging_finished", "waiting_car"].includes(status);
+    const session = this._num("session");
+    const total = this._num("energy");
+    const today = this._eBase?.today !== null && this._eBase?.today !== undefined && total !== null ? Math.max(0, total - this._eBase.today) : null;
+    const month = this._eBase?.month !== null && this._eBase?.month !== undefined && total !== null ? Math.max(0, total - this._eBase.month) : null;
+    const amps = ["ia", "ib", "ic"].map((k) => this._num(k));
+    const phases = amps.filter((a) => (a ?? 0) > 1).length;
+    let title, sub, level = "";
+    if (status === "error") { title = "Störung"; sub = "Ladestation prüfen"; level = "bad"; }
+    else if (charging) { title = `Lädt · ${this._fmt(kw, 1)} kW`; sub = phases ? `${phases}-phasig · ${this._fmt(Math.max(...amps.map((a) => a ?? 0)), 1)} A` : ""; }
+    else if (status === "charging_finished") { title = "Laden beendet"; sub = session !== null ? `${this._fmt(session, 1)} kWh geladen` : ""; level = "ok"; }
+    else if (connected) { title = "Auto verbunden"; sub = "lädt gerade nicht"; }
+    else { title = "Kein Auto angeschlossen"; sub = session !== null ? `Letzter Ladevorgang: ${this._fmt(session, 1)} kWh` : ""; }
+    const phaseBars = ["L1", "L2", "L3"].map((n, i) => {
+      const a = amps[i];
+      return `<div class="ph"><span class="pn">${n}</span><span class="pbar"><span style="width:${Math.max(0, Math.min(100, ((a ?? 0) / 16) * 100))}%"></span></span><span class="pa">${this._fmt(a, 1)} A</span></div>`;
+    }).join("");
+    return `
+      ${this._heroWb(status, connected, charging)}
+      <div class="main">
+        <div class="head ${level}">${hcEsc(title)}</div>
+        <div class="sub">${hcEsc(sub)}</div>
+        <div class="big">
+          <button class="soc click" data-more="session" aria-label="Ladevorgang"><span class="bn">${this._fmt(session, 1)}</span><span class="bu">kWh</span><div class="bl">${charging ? "dieser Ladevorgang" : "letzter Ladevorgang"}</div></button>
+          <div class="right"><span class="bn2">${this._fmt(kw, 1)} kW</span><div class="bl">Leistung</div></div>
+        </div>
+        <div class="phases">${phaseBars}</div>
+        <div class="tiles">
+          ${this._tile("bolt", today === null ? "–" : `${this._fmt(today, 1)} kWh`, "Heute", "", "energy")}
+          ${this._tile("chart", month === null ? "–" : `${this._fmt(month, 0)} kWh`, "Dieser Monat", "", "energy")}
+          ${this._tile("ev", total === null ? "–" : `${this._fmt(total, 0)} kWh`, "Gesamt", "", "energy")}
+          ${this._tile("thermo", `${this._fmt(this._num("handle"), 0)} °C`, "Griff", "", "handle")}
+        </div>
+      </div>
+      <div class="foot"><span>${hcIcon("ev")}${hcEsc(HC_WB_STATE[status] || this._stateText("status"))} · Netz ${this._fmt(this._num("grid_v"), 0)} V</span></div>`;
+  }
+
+  _heroWb(status, connected, charging) {
+    const led = status === "error" ? "bad" : charging ? "charge" : connected ? "conn" : "idle";
+    return `
+      <div class="hero wb light">
+        <div class="hero__top"><div class="hero__title">${hcEsc(this._config.title || this._devName("Ladestation"))}</div>${this._pill(10 * 60000, status === "error")}</div>
+        <svg class="scene" viewBox="0 0 400 190" role="img" aria-label="Ladestation">
+          <rect class="wall" x="0" y="0" width="120" height="177"/>
+          <rect class="wbox" x="44" y="62" width="40" height="64" rx="8"/>
+          <circle class="ring ${led}" cx="64" cy="84" r="9"/>
+          <path class="holster" d="M52 112 h24 v8 h-24z"/>
+          ${connected ? `
+            <path class="cable" d="M64 126 C 64 165, 150 172, 214 140"/>
+            <path class="flow ${charging ? "on" : ""}" d="M64 126 C 64 165, 150 172, 214 140" style="--c:#3ddc84"/>` : `
+            <path class="cable" d="M58 126 C 50 150, 78 150, 70 126"/>`}
+          <g class="car ${connected ? "" : "away"}">
+            <path class="body" d="M196 150 Q198 128 222 124 L250 108 Q262 102 290 102 L322 102 Q340 104 352 122 L368 128 Q378 132 378 146 L378 152 Q378 156 372 156 L200 156 Q196 156 196 150Z"/>
+            <path class="glass" d="M258 112 Q266 108 288 108 L300 108 L302 124 L250 124Z M308 108 L322 108 Q334 110 342 124 L310 124Z"/>
+            <circle class="wheel" cx="236" cy="156" r="14"/><circle class="hub" cx="236" cy="156" r="6"/>
+            <circle class="wheel" cx="340" cy="156" r="14"/><circle class="hub" cx="340" cy="156" r="6"/>
+            ${charging ? `<path class="bolt" d="M286 132 l-8 12 h7 l-3 10 10 -14 h-7 l3 -8z"/>` : ""}
+          </g>
+          <line class="ground" x1="0" y1="177" x2="400" y2="177"/>
+        </svg>
+      </div>`;
+  }
+
+  _styles() {
+    return `
+      .hero.wb { background: linear-gradient(180deg, #d8dee6 0%, #e9edf2 70%, #c9ced6 100%); }
+      .scene .wall { fill: #eef0f3; } .scene .wbox { fill: #fafbfc; stroke: #b5bcc6; stroke-width: 2; }
+      .scene .ring { fill: none; stroke-width: 4; } .scene .ring.idle { stroke: #b9c0ca; } .scene .ring.conn { stroke: #3ddc84; }
+      .scene .ring.charge { stroke: #3ddc84; animation: hc-pulse 1.6s ease-in-out infinite; } .scene .ring.bad { stroke: #ff5f57; }
+      @keyframes hc-pulse { 50% { opacity: .35; } }
+      .scene .holster { fill: #c5cbd4; }
+      .scene .cable { fill: none; stroke: #3a3f48; stroke-width: 5; stroke-linecap: round; }
+      .scene .car .body { fill: #9aa5b4; } .scene .car .glass { fill: #dfe8f2; opacity: .9; }
+      .scene .car .wheel { fill: #2b2f36; } .scene .car .hub { fill: #b9c0ca; }
+      .scene .car.away { opacity: .25; } .scene .car .bolt { fill: #3ddc84; }
+      .scene .ground { stroke: #9aa3ad; }
+      .head.ok { color: var(--hc-green); } .head.bad { color: var(--hc-red); }
+      .phases { display: grid; gap: 8px; margin: 8px 0 4px; }
+      .ph { display: grid; grid-template-columns: 26px 1fr 64px; align-items: center; gap: 10px; font-size: 14px; }
+      .pn { color: var(--hc-fg2); font-weight: 700; } .pa { text-align: right; color: var(--hc-fg2); }
+      .pbar { height: 10px; border-radius: 999px; background: var(--hc-track); overflow: hidden; }
+      .pbar span { display: block; height: 100%; background: var(--hc-green); border-radius: 999px; }`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Drucker (Integration ipp)
+// ---------------------------------------------------------------------------
+const HC_INK = [
+  ["black", /black|schwarz|\bk\b/, "#2b2b2b", "Schwarz"], ["cyan", /cyan/, "#00a3d9", "Cyan"],
+  ["magenta", /magenta/, "#d6338a", "Magenta"], ["yellow", /yellow|gelb/, "#f2c200", "Gelb"],
+];
+
+class HcPrinterCard extends HcBaseCard {
+  static getStubConfig() { return {}; }
+  static getConfigElement() { return document.createElement("hc-generic-card-editor"); }
+  _emptyText() { return "Kein Drucker gefunden (Integration „Internet Printing Protocol (IPP)“)."; }
+
+  _discover() {
+    const hass = this._hass;
+    if (!hass?.entities) return;
+    const ents = Object.values(hass.entities).filter((e) => e.platform === "ipp");
+    if (!ents.length) return;
+    const isMain = (e) => {
+      const a = hass.states[e.entity_id]?.attributes || {};
+      return e.translation_key === "printer" || (a.options && a.options.includes("printing"));
+    };
+    const main = this._config.device_id ? ents.find((e) => e.device_id === this._config.device_id && isMain(e)) : ents.find(isMain);
+    if (!main) return;
+    this._deviceId = main.device_id;
+    const map = { printer: main.entity_id };
+    const inks = [];
+    for (const e of ents.filter((x) => x.device_id === main.device_id && x.entity_id !== main.entity_id)) {
+      const st = hass.states[e.entity_id];
+      if (!st || st.attributes.marker_type === undefined) {
+        if (/uptime|betriebszeit/.test(e.entity_id) || e.translation_key === "uptime") map.uptime = e.entity_id;
+        continue;
+      }
+      const name = `${e.entity_id} ${st.attributes.friendly_name || ""}`.toLowerCase();
+      const def = HC_INK.find(([, re]) => re.test(name));
+      const key = `ink_${inks.length}`;
+      map[key] = e.entity_id;
+      inks.push({ key, color: def ? def[2] : "#8a94a3", label: def ? def[3] : (st.attributes.friendly_name || "Tinte"), order: def ? HC_INK.indexOf(def) : 9 });
+    }
+    inks.sort((a, b) => a.order - b.order);
+    this._inks = inks;
+    this._map = map;
+  }
+
+  _render() {
+    const st = this._st("printer");
+    const state = st?.state;
+    const printing = state === "printing";
+    const inks = (this._inks || []).map((ink) => {
+      const s = this._st(ink.key);
+      const v = this._num(ink.key);
+      const low = s?.attributes.marker_low_level ?? 15;
+      return { ...ink, v, low, isLow: v !== null && v <= low + 5, empty: v !== null && v <= low };
+    });
+    const lowest = inks.filter((i) => i.v !== null).sort((a, b) => a.v - b.v)[0];
+    const lows = inks.filter((i) => i.isLow);
+    let title, sub = "", level = "";
+    if (state === "stopped") { title = "Gestoppt"; sub = st.attributes.state_message || st.attributes.state_reason || "Drucker prüfen"; level = "bad"; }
+    else if (printing) { title = "Druckt …"; sub = st.attributes.state_message || ""; }
+    else if (state === "unavailable") { title = "Nicht erreichbar"; sub = "ausgeschaltet oder im Ruhezustand"; }
+    else if (lows.length) { title = `${lows.map((i) => i.label).join(", ")} bald nachfüllen`; level = lows.some((i) => i.empty) ? "bad" : "warn"; sub = "Tinte wird knapp"; }
+    else { title = "Bereit"; sub = st?.attributes.info || ""; }
+    const rows = inks.map((i) => `
+      <button class="ink click" data-more="${i.key}" aria-label="${hcEsc(i.label)}: Verlauf">
+        <span class="swatch" style="background:${i.color}"></span><span class="il">${hcEsc(i.label)}</span>
+        <span class="ibar"><span style="width:${Math.max(0, Math.min(100, i.v ?? 0))}%;background:${i.color}"></span><span class="lowmark" style="left:${i.low}%"></span></span>
+        <span class="iv ${i.isLow ? "low" : ""}">${this._fmt(i.v, 0)} %</span></button>`).join("");
+    return `
+      ${this._heroPr(state, inks)}
+      <div class="main">
+        <div class="head ${level}">${hcEsc(title)}</div>
+        <div class="sub">${hcEsc(sub)}</div>
+        ${lowest ? `<div class="big"><button class="soc click" data-more="${lowest.key}" aria-label="Füllstand"><span class="bn">${this._fmt(lowest.v, 0)}</span><span class="bu">%</span><div class="bl">niedrigster Tank · ${hcEsc(lowest.label)}</div></button></div>` : ""}
+        <div class="inks">${rows}</div>
+      </div>
+      <div class="foot"><span>${hcIcon("printer")}${hcEsc(st?.attributes.info || "Drucker")}${st?.attributes.location ? ` · ${hcEsc(st.attributes.location)}` : ""}</span></div>`;
+  }
+
+  _heroPr(state, inks) {
+    const printing = state === "printing";
+    const tanks = inks.slice(0, 4).map((i, n) => {
+      const x = 236 + n * 15, h = 26 * Math.max(0, Math.min(100, i.v ?? 0)) / 100;
+      return `<rect class="tank" x="${x}" y="104" width="11" height="30" rx="2"/><rect x="${x + 1.5}" y="${132.5 - h}" width="8" height="${h}" rx="1" fill="${i.color}"/>`;
+    }).join("");
+    return `
+      <div class="hero pr light">
+        <div class="hero__top"><div class="hero__title">${hcEsc(this._config.title || this._devName("Drucker"))}</div>${this._pill(60 * 60000, state === "stopped")}</div>
+        <svg class="scene" viewBox="0 0 400 190" role="img" aria-label="Drucker">
+          <rect class="table" x="70" y="140" width="270" height="9" rx="2"/><path class="legs" d="M90 149 V174 M320 149 V174"/>
+          <path class="paperin" d="M150 70 L156 40 L244 40 L250 70 Z"/>
+          <rect class="body" x="120" y="66" width="190" height="74" rx="12"/>
+          <rect class="lid" x="120" y="66" width="190" height="16" rx="8"/>
+          <rect class="slot" x="146" y="128" width="108" height="6" rx="3"/>
+          ${printing ? `<g class="sheet"><rect x="152" y="132" width="96" height="30" rx="1"/><path d="M162 142 h60 M162 148 h70 M162 154 h44"/></g>` : ""}
+          <rect class="panel" x="134" y="92" width="34" height="18" rx="3"/>
+          <circle class="led ${state === "stopped" ? "bad" : state === "unavailable" ? "off" : "ok"}" cx="176" cy="101" r="2.6"/>
+          ${tanks}
+          <line class="ground" x1="20" y1="174" x2="380" y2="174"/>
+        </svg>
+      </div>`;
+  }
+
+  _styles() {
+    return `
+      .hero.pr { background: linear-gradient(180deg, #cdd6e1 0%, #e6ebf1 70%, #eef1f5 100%); }
+      .scene .table { fill: #b59b7f; } .scene .legs { stroke: #9c8268; stroke-width: 5; stroke-linecap: round; } .scene .paperin { fill: #ffffff; stroke: #c9d0d9; }
+      .scene .body { fill: #f7f8fa; stroke: #b4bcc7; stroke-width: 2; } .scene .lid { fill: #e3e7ec; }
+      .scene .slot { fill: #3a3f48; } .scene .panel { fill: #2b2f36; }
+      .scene .tank { fill: rgba(255,255,255,.7); stroke: #9aa3ad; }
+      .scene .sheet rect { fill: #fff; stroke: #c9d0d9; } .scene .sheet path { stroke: #9aa3ad; stroke-width: 2; stroke-linecap: round; }
+      .scene .sheet { animation: hc-print 2.4s ease-in-out infinite; }
+      @keyframes hc-print { from { transform: translateY(-26px); opacity: 0; } 30% { opacity: 1; } to { transform: translateY(4px); } }
+      .scene .led.ok { fill: #3ddc84; } .scene .led.bad { fill: #ff5f57; } .scene .led.off { fill: #6b7380; }
+      .scene .ground { stroke: rgba(80,90,105,.25); }
+      .head.warn { color: #b7791f; } .head.bad { color: var(--hc-red); }
+      .inks { display: grid; gap: 4px; margin: 10px 0 12px; }
+      .ink { display: grid; grid-template-columns: 14px 82px 1fr 52px; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 10px; text-align: left; }
+      .swatch { width: 12px; height: 12px; border-radius: 50%; } .il { font-weight: 600; }
+      .ibar { position: relative; height: 12px; border-radius: 999px; background: var(--hc-track); overflow: hidden; }
+      .ibar > span:first-child { display: block; height: 100%; border-radius: 999px; }
+      .lowmark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--hc-fg2); opacity: .6; }
+      .iv { text-align: right; font-weight: 700; } .iv.low { color: var(--hc-red); }
+      @media (prefers-reduced-motion: reduce) { .scene .sheet { animation: none; } }`;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Gemeinsame Gestaltung
 // ---------------------------------------------------------------------------
 const HC_STYLES = `
@@ -658,6 +1155,7 @@ const HC_STYLES = `
   .hero { position: relative; }
   .hero__top { position: absolute; inset: 14px 16px auto 16px; display: flex; justify-content: space-between; align-items: center; z-index: 1; }
   .hero__title { color: #fff; font-size: 22px; font-weight: 700; text-shadow: 0 1px 3px rgba(0,0,0,.35); }
+  .hero.light .hero__title { color: #1c2b4a; text-shadow: none; }
   .pill { display: inline-flex; align-items: center; gap: 8px; background: rgba(40,45,55,.55); color: #fff; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: #3ddc84; } .dot.bad { background: #ff5f57; }
   .scene { display: block; width: 100%; height: auto; padding-top: 40px; }
@@ -717,6 +1215,9 @@ class HcSimpleEditor extends HTMLElement {
 class HcWeatherEditor extends HcSimpleEditor {
   static hint = "Die Entitäten werden automatisch gefunden. Andere Stationen im YAML-Editor zuordnen: entities: { temperature, humidity, wind_speed, wind_direction, rain_total, raining, sunshine, brightness, battery_low }.";
 }
+class HcGenericEditor extends HcSimpleEditor {
+  static hint = "Das Gerät wird über seine Integration automatisch gefunden. Bei mehreren Geräten im YAML-Editor device_id angeben.";
+}
 class HcNasEditor extends HcSimpleEditor {
   static hint = "Die DiskStation wird über die Integration „Synology DSM“ automatisch gefunden. Bei mehreren Geräten im YAML-Editor device_id angeben.";
 }
@@ -726,9 +1227,16 @@ hcDefine("hc-weather-station-card", HcWeatherStationCard);
 hcDefine("hc-diskstation-card", HcDiskStationCard);
 hcDefine("hc-weather-station-card-editor", HcWeatherEditor);
 hcDefine("hc-diskstation-card-editor", HcNasEditor);
+hcDefine("hc-dishwasher-card", HcDishwasherCard);
+hcDefine("hc-wallbox-card", HcWallboxCard);
+hcDefine("hc-printer-card", HcPrinterCard);
+hcDefine("hc-generic-card-editor", HcGenericEditor);
 window.customCards = window.customCards || [];
 for (const c of [
   { type: "hc-weather-station-card", name: "Wetterstation (ha-cards)", description: "Himmel nach Messwerten, Temperatur mit Hoch/Tief, Windrose, Regen und Sonne heute." },
   { type: "hc-diskstation-card", name: "DiskStation (ha-cards)", description: "Synology NAS mit Plattenstatus, Belegung, CPU/RAM, Netzwerk und Sicherheitsberater." },
+  { type: "hc-dishwasher-card", name: "Geschirrspüler (ha-cards)", description: "Home-Connect-Geschirrspüler: Programm, Restzeit, Fortschritt, Salz/Klarspüler, Start/Stopp." },
+  { type: "hc-wallbox-card", name: "Ladestation (ha-cards)", description: "Tesla Wall Connector: Ladeleistung, Phasen, Ladevorgang, kWh heute/Monat/gesamt." },
+  { type: "hc-printer-card", name: "Drucker (ha-cards)", description: "IPP-Drucker: Status und Tintenfüllstände mit Warnung." },
 ]) if (!window.customCards.some((x) => x.type === c.type)) window.customCards.push({ ...c, preview: true });
 console.info(`%c HA-CARDS %c ${HC_VERSION} `, "background:#2f7fe0;color:#fff;border-radius:3px 0 0 3px", "background:#14213d;color:#fff;border-radius:0 3px 3px 0");

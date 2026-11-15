@@ -48,13 +48,40 @@ nas('sensor.diskstation_volume_1_status','normal','v1','volume_status');
 nas('sensor.diskstation_volume_1_verwendetes_volumen',N.pct??37.7,'v1','volume_percentage_used',{unit_of_measurement:'%'});
 nas('sensor.diskstation_volume_1_belegter_speicherplatz',N.used??6.576,'v1','volume_size_used',{unit_of_measurement:'TB'});
 nas('sensor.diskstation_volume_1_maximale_festplattentemperatur',38,'v1','volume_disk_temp_max',{unit_of_measurement:'°C'});
+// Geschirrspüler (Home Connect) – ohne translation_key, prüft die Namensmuster
+const D = scen.dw || {};
+devices.dw={name:'Geschirrspüler',model:'SX87YX03CE'}; devices.wb={name:'Tesla Wall Connector',model:'Gen 3'}; devices.pr={name:'EPSON ET-2850 Series',model:'ET-2850'};
+const hc=(id,v,attr={})=>add(id,v,'dw',{platform:'home_connect',attr});
+hc('sensor.geschirrspuler_betriebszustand',D.state??'ready',{options:['inactive','ready','delayedstart','run','pause','actionrequired','finished','error','aborting']});
+hc('sensor.geschirrspuler_programm_fortschritt',D.progress??'unavailable',{unit_of_measurement:'%'});
+hc('sensor.geschirrspuler_programm_endzeit',D.finishMin!==undefined?new Date(now+D.finishMin*60000).toISOString():'unavailable');
+hc('sensor.geschirrspuler_tur',D.door??'closed'); hc('sensor.geschirrspuler_salz_fast_leer',D.salt??'off'); hc('sensor.geschirrspuler_klarspuler_fast_leer','off');
+hc('sensor.geschirrspuler_programm_beendet',D.finished??'off');
+hc('select.geschirrspuler_aktives_programm',D.active??'unknown'); hc('select.geschirrspuler_ausgewahltes_programm','dishcare_dishwasher_program_eco_50');
+hc('button.geschirrspuler_programm_stoppen','unknown'); hc('binary_sensor.geschirrspuler_fernstart','on');
+// Wall Connector
+const B = scen.wb || {};
+const wb=(id,v,attr={})=>add(id,v,'wb',{platform:'tesla_wall_connector',attr});
+wb('sensor.tesla_wall_connector_status',B.status??'not_connected'); wb('sensor.tesla_wall_connector_gesamtleistung',B.kw??0.0009,{unit_of_measurement:'kW'});
+wb('sensor.tesla_wall_connector_sitzungsenergie',B.session??55.004,{unit_of_measurement:'kWh'}); wb('sensor.tesla_wall_connector_energie',2508.709,{unit_of_measurement:'kWh'});
+wb('binary_sensor.tesla_wall_connector_fahrzeug_verbunden',B.conn??'off'); wb('binary_sensor.tesla_wall_connector_schutz_geschlossen',B.cont??'off');
+for (const [p,a] of [['a',B.a??0.3],['b',B.b??0],['c',B.c??0.2]]) wb(`sensor.tesla_wall_connector_strom_der_phase_${p}`,a,{unit_of_measurement:'A'});
+wb('sensor.tesla_wall_connector_temperatur_des_griffs',B.handle??5.9,{unit_of_measurement:'°C'}); wb('sensor.tesla_wall_connector_netzspannung',234.5,{unit_of_measurement:'V'});
+// Drucker (IPP)
+const P = scen.pr || {};
+const ip=(id,v,attr={})=>add(id,v,'pr',{platform:'ipp',attr});
+ip('sensor.epson_et_2850_series',P.state??'idle',{options:['idle','printing','stopped'],info:'EPSON ET-2850 Series',location:'',state_message:P.msg??null});
+for (const [c,v] of [['black',P.black??19],['cyan',44],['magenta',46],['yellow',P.yellow??46]]) ip(`sensor.epson_et_2850_series_${c}_ink`,v,{marker_type:'ink',marker_low_level:15,marker_high_level:100,unit_of_measurement:'%',friendly_name:`EPSON ET-2850 Series ${c[0].toUpperCase()+c.slice(1)} ink`});
 const midnight=new Date(); midnight.setHours(0,0,0,0);
 const hass={states,entities,devices,locale:{language:'de'},language:'de',callService:()=>Promise.resolve(),
  callWS:(m)=>{const res={}; const h=(o)=>({start:midnight.getTime()+o*3600e3});
   res['sensor.wetterstation_ch_temperatur']=[{...h(-1),state:3.1,min:3,max:3.4},{...h(0),min:1.8,max:2.6},{...h(4),min:0.9,max:1.5},{...h(9),min:3.2,max:5.6}];
   res['sensor.wetterstation_ch_regenzahler']=[{...h(-1),state:549.3,change:0},{...h(2),change:1.4}];
   res['sensor.wetterstation_ch_sonnenscheindauer']=[{...h(-1),state:0,change:0}];
+  const ms=new Date(); ms.setDate(1); ms.setHours(0,0,0,0);
+  res['sensor.tesla_wall_connector_energie']=[{start:ms.getTime()-86400e3,state:2371.2},{start:midnight.getTime()-86400e3,state:2490.1}];
   return Promise.resolve(res);}};
-const card=document.createElement(q.get('card')==='nas'?'hc-diskstation-card':'hc-weather-station-card');
+const tags={weather:'hc-weather-station-card',nas:'hc-diskstation-card',dw:'hc-dishwasher-card',wb:'hc-wallbox-card',pr:'hc-printer-card'};
+const card=document.createElement(tags[q.get('card')]||tags.weather);
 card.setConfig({}); document.getElementById('wrap').appendChild(card); card.hass=hass; window.card=card;
 </script></body></html>
