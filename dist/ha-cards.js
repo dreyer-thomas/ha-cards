@@ -13,7 +13,7 @@
  * MIT-Lizenz, Nutzung auf eigene Verantwortung.
  */
 
-const HC_VERSION = "0.2.1";
+const HC_VERSION = "0.2.2";
 
 // Material-Design-Icons (Apache 2.0, Pictogrammers) als Inline-SVG
 const HC_ICONS = {
@@ -882,7 +882,7 @@ const HC_WB_STATE = {
 
 class HcWallboxCard extends HcBaseCard {
   static getStubConfig() { return {}; }
-  static getConfigElement() { return document.createElement("hc-generic-card-editor"); }
+  static getConfigElement() { return document.createElement("hc-wallbox-card-editor"); }
   _emptyText() { return "Keine Ladestation gefunden (Integration „Tesla Wall Connector“)."; }
 
   _discover() {
@@ -974,14 +974,35 @@ class HcWallboxCard extends HcBaseCard {
           <rect class="wbox" x="44" y="62" width="40" height="64" rx="8"/>
           <circle class="ring ${led}" cx="64" cy="84" r="9"/>
           <path class="holster" d="M52 112 h24 v8 h-24z"/>
-          ${connected ? `
-            <path class="cable" d="M64 126 C 64 170, 170 178, 226 131"/>
-            <path class="flow ${charging ? "on" : ""}" d="M64 126 C 64 170, 170 178, 226 131" style="--c:#3ddc84"/>` : `
-            <path class="cable" d="M58 126 C 50 150, 78 150, 70 126"/>`}
-          ${this._car(connected, charging)}
+          ${(() => {
+            const photo = this._carPhoto();
+            const end = photo ? "168 138" : "226 131";
+            const ctrl = photo ? "128 178" : "170 178";
+            const cable = connected ? `
+            <path class="cable" d="M64 126 C 64 170, ${ctrl}, ${end}"/>
+            <path class="flow ${charging ? "on" : ""}" d="M64 126 C 64 170, ${ctrl}, ${end}" style="--c:#3ddc84"/>` : `
+            <path class="cable" d="M58 126 C 50 150, 78 150, 70 126"/>`;
+            const car = photo
+              ? `<g class="car photo ${connected ? "" : "away"}"><ellipse class="shadow" cx="276" cy="176" rx="122" ry="4"/>
+                  <image href="${hcEsc(photo)}" x="108" y="22" width="320" height="192" preserveAspectRatio="xMidYMid meet"/>
+                  ${charging ? `<path class="bolt" d="M176 98 l-7 10 h6 l-3 9 9 -12 h-6 l3 -7z"/>` : ""}</g>`
+              : this._car(connected, charging);
+            return photo ? car + cable : cable + car;
+          })()}
           <line class="ground" x1="0" y1="177" x2="400" y2="177"/>
         </svg>
       </div>`;
+  }
+
+  // Foto des eigenen Autos: car_image (image.*-Entität, Entität mit Bild oder URL),
+  // sonst automatisch das Fahrzeugbild der Integration BavarianData, falls vorhanden.
+  _carPhoto() {
+    const cfg = this._config.car_image;
+    if (cfg === false || cfg === "none") return null;
+    const fromEntity = (id) => this._hass.states[id]?.attributes?.entity_picture || null;
+    if (typeof cfg === "string" && cfg) return /^(https?:)?\/|^data:/.test(cfg) ? cfg : fromEntity(cfg);
+    const ent = Object.values(this._hass.entities || {}).find((e) => e.platform === "bavariandata" && e.entity_id.startsWith("image."));
+    return ent ? fromEntity(ent.entity_id) : null;
   }
 
   // Eigene, neutrale Elektro-Limousine mit Fließheck (Seitenansicht, Front rechts)
@@ -1042,6 +1063,7 @@ class HcWallboxCard extends HcBaseCard {
       .scene .car .spoke { stroke: #7d8693; stroke-width: 2.6; stroke-linecap: round; } .scene .car .hubcap { fill: #5b636f; }
       .scene .car .shadow { fill: rgba(0,0,0,.18); } .scene .car .well { fill: #2a2f37; }
       .scene .car.away { opacity: .3; } .scene .car .bolt { fill: #3ddc84; }
+      .scene .car.photo.away { opacity: .45; filter: grayscale(.6); }
       .scene .ground { stroke: #9aa3ad; }
       .head.ok { color: var(--hc-green); } .head.bad { color: var(--hc-red); }
       .phases { display: grid; gap: 8px; margin: 8px 0 4px; }
@@ -1258,6 +1280,22 @@ class HcWeatherEditor extends HcSimpleEditor {
 class HcGenericEditor extends HcSimpleEditor {
   static hint = "Das Gerät wird über seine Integration automatisch gefunden. Bei mehreren Geräten im YAML-Editor device_id angeben.";
 }
+class HcWallboxEditor extends HcSimpleEditor {
+  static hint = "Fahrzeugbild: wird automatisch aus BavarianData übernommen. Sonst unter „Fahrzeugbild“ eine image.-Entität oder Bild-URL eintragen, „none“ für die Zeichnung.";
+  setConfig(config) {
+    super.setConfig(config);
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `<label for="ci">Fahrzeugbild</label><input id="ci" value="${hcEsc(this._config.car_image || "")}" placeholder="automatisch (BavarianData)">`;
+    this.shadowRoot.insertBefore(wrap, this.shadowRoot.querySelector(".hint"));
+    wrap.querySelector("#ci").addEventListener("change", (ev) => {
+      const cfg = { ...this._config };
+      const v = ev.target.value.trim();
+      if (v) cfg.car_image = v; else delete cfg.car_image;
+      this._config = cfg;
+      this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: cfg }, bubbles: true, composed: true }));
+    });
+  }
+}
 class HcNasEditor extends HcSimpleEditor {
   static hint = "Die DiskStation wird über die Integration „Synology DSM“ automatisch gefunden. Bei mehreren Geräten im YAML-Editor device_id angeben.";
 }
@@ -1271,6 +1309,7 @@ hcDefine("hc-dishwasher-card", HcDishwasherCard);
 hcDefine("hc-wallbox-card", HcWallboxCard);
 hcDefine("hc-printer-card", HcPrinterCard);
 hcDefine("hc-generic-card-editor", HcGenericEditor);
+hcDefine("hc-wallbox-card-editor", HcWallboxEditor);
 window.customCards = window.customCards || [];
 for (const c of [
   { type: "hc-weather-station-card", name: "Wetterstation (ha-cards)", description: "Himmel nach Messwerten, Temperatur mit Hoch/Tief, Windrose, Regen und Sonne heute." },

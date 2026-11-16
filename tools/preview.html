@@ -67,6 +67,7 @@ wb('sensor.tesla_wall_connector_sitzungsenergie',B.session??55.004,{unit_of_meas
 wb('binary_sensor.tesla_wall_connector_fahrzeug_verbunden',B.conn??'off'); wb('binary_sensor.tesla_wall_connector_schutz_geschlossen',B.cont??'off');
 for (const [p,a] of [['a',B.a??0.3],['b',B.b??0],['c',B.c??0.2]]) wb(`sensor.tesla_wall_connector_strom_der_phase_${p}`,a,{unit_of_measurement:'A'});
 wb('sensor.tesla_wall_connector_temperatur_des_griffs',B.handle??5.9,{unit_of_measurement:'°C'}); wb('sensor.tesla_wall_connector_netzspannung',234.5,{unit_of_measurement:'V'});
+if (B.photo) { add('image.test_auto','2026-11-16T00:00:00Z','car',{platform:'bavariandata',attr:{entity_picture:'test-car.png' /* eigenes Testbild nach tools/ legen, nicht einchecken */}}); }
 // Drucker (IPP)
 const P = scen.pr || {};
 const ip=(id,v,attr={})=>add(id,v,'pr',{platform:'ipp',attr});

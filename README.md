@@ -89,6 +89,12 @@ type: custom:hc-wallbox-card
 | ![](screenshots/ladestation.png) | ![](screenshots/ladestation-frei.png) |
 
 - Wallbox mit Statusring, Ladekabel und Auto, Energiefluss beim Laden
+- Zeigt das Foto des eigenen Autos, wenn die Integration **BavarianData** ein Fahrzeugbild liefert (wird automatisch erkannt). Sonst eine Zeichnung.
+
+```yaml
+type: custom:hc-wallbox-card
+car_image: image.mein_auto   # eigenes Bild: image-Entität, Entität mit Bild oder URL; "none" = Zeichnung
+```
 - Leistung, Energie des Ladevorgangs, Ströme je Phase (L1–L3)
 - kWh heute, im laufenden Monat (aus der Langzeitstatistik) und gesamt, Griff-Temperatur
 
