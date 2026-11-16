@@ -13,7 +13,7 @@
  * MIT-Lizenz, Nutzung auf eigene Verantwortung.
  */
 
-const HC_VERSION = "0.2.0";
+const HC_VERSION = "0.2.1";
 
 // Material-Design-Icons (Apache 2.0, Pictogrammers) als Inline-SVG
 const HC_ICONS = {
@@ -975,19 +975,49 @@ class HcWallboxCard extends HcBaseCard {
           <circle class="ring ${led}" cx="64" cy="84" r="9"/>
           <path class="holster" d="M52 112 h24 v8 h-24z"/>
           ${connected ? `
-            <path class="cable" d="M64 126 C 64 165, 150 172, 214 140"/>
-            <path class="flow ${charging ? "on" : ""}" d="M64 126 C 64 165, 150 172, 214 140" style="--c:#3ddc84"/>` : `
+            <path class="cable" d="M64 126 C 64 170, 170 178, 226 131"/>
+            <path class="flow ${charging ? "on" : ""}" d="M64 126 C 64 170, 170 178, 226 131" style="--c:#3ddc84"/>` : `
             <path class="cable" d="M58 126 C 50 150, 78 150, 70 126"/>`}
-          <g class="car ${connected ? "" : "away"}">
-            <path class="body" d="M196 150 Q198 128 222 124 L250 108 Q262 102 290 102 L322 102 Q340 104 352 122 L368 128 Q378 132 378 146 L378 152 Q378 156 372 156 L200 156 Q196 156 196 150Z"/>
-            <path class="glass" d="M258 112 Q266 108 288 108 L300 108 L302 124 L250 124Z M308 108 L322 108 Q334 110 342 124 L310 124Z"/>
-            <circle class="wheel" cx="236" cy="156" r="14"/><circle class="hub" cx="236" cy="156" r="6"/>
-            <circle class="wheel" cx="340" cy="156" r="14"/><circle class="hub" cx="340" cy="156" r="6"/>
-            ${charging ? `<path class="bolt" d="M286 132 l-8 12 h7 l-3 10 10 -14 h-7 l3 -8z"/>` : ""}
-          </g>
+          ${this._car(connected, charging)}
           <line class="ground" x1="0" y1="177" x2="400" y2="177"/>
         </svg>
       </div>`;
+  }
+
+  // Eigene, neutrale Elektro-Limousine mit Fließheck (Seitenansicht, Front rechts)
+  _car(connected, charging) {
+    const wheel = (cx) => {
+      const spokes = [0, 72, 144, 216, 288].map((a) =>
+        `<line class="spoke" x1="${cx}" y1="159" x2="${cx}" y2="148.5" transform="rotate(${a} ${cx} 159)"/>`).join("");
+      return `<circle class="tire" cx="${cx}" cy="159" r="17"/><circle class="rim" cx="${cx}" cy="159" r="11.5"/>${spokes}<circle class="hubcap" cx="${cx}" cy="159" r="3"/>`;
+    };
+    return `
+      <g class="car ${connected ? "" : "away"}">
+        <defs>
+          <linearGradient id="hcCarBody" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#c3ccd7"/><stop offset=".5" stop-color="#8f9aa8"/><stop offset="1" stop-color="#6b7684"/>
+          </linearGradient>
+          <linearGradient id="hcCarGlass" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#4a5868"/><stop offset=".55" stop-color="#2c3643"/><stop offset="1" stop-color="#3b4756"/>
+          </linearGradient>
+        </defs>
+        <ellipse class="shadow" cx="292" cy="177" rx="112" ry="5"/>
+        <circle class="well" cx="232" cy="154" r="19.5"/><circle class="well" cx="346" cy="154" r="19.5"/>
+        <path class="body" d="M204 153 C197 149 196 137 202 131 L214 126 C226 122 238 113 254 105 C266 99 290 96 312 97 C326 98 338 105 350 114 C360 119 374 121 383 125 C390 129 391 141 389 150 L387 153 L366 153 A20 20 0 0 0 326 153 L252 153 A20 20 0 0 0 212 153 Z"/>
+        <path class="glass" d="M242 118 C252 110 264 103 280 101 L314 100 C325 101 334 107 342 115 Z"/>
+        <path class="reflect" d="M262 108 L286 102 L292 102 L268 110 Z"/>
+        <line class="pillar" x1="297" y1="99" x2="297" y2="118"/>
+        <path class="shoulder" d="M206 134 C260 127 330 126 386 131"/>
+        <path class="cut" d="M297 118 L295 150 M342 116 L337 146 M254 120 L252 148"/>
+        <rect class="handle" x="272" y="124" width="10" height="2.4" rx="1.2"/><rect class="handle" x="316" y="123" width="10" height="2.4" rx="1.2"/>
+        <path class="mirror" d="M336 112 l7 -1.5 l1.5 4.5 l-7 1.5z"/>
+        <path class="headlight" d="M371 123 L387 127 L386 129.5 L370 125.5 Z"/>
+        <path class="taillight" d="M203 131 L217 126.5 L217 129.5 L204 134 Z"/>
+        <path class="skirt" d="M252 150 L326 150 L326 153.5 L252 153.5 Z"/>
+        <rect class="port ${connected ? "on" : ""}" x="222" y="127" width="9" height="6" rx="1.5"/>
+        ${wheel(232)}${wheel(346)}
+        ${charging ? `<path class="bolt" d="M232 104 l-7 10 h6 l-3 9 9 -12 h-6 l3 -7z"/>` : ""}
+      </g>`;
   }
 
   _styles() {
@@ -999,9 +1029,19 @@ class HcWallboxCard extends HcBaseCard {
       @keyframes hc-pulse { 50% { opacity: .35; } }
       .scene .holster { fill: #c5cbd4; }
       .scene .cable { fill: none; stroke: #3a3f48; stroke-width: 5; stroke-linecap: round; }
-      .scene .car .body { fill: #9aa5b4; } .scene .car .glass { fill: #dfe8f2; opacity: .9; }
-      .scene .car .wheel { fill: #2b2f36; } .scene .car .hub { fill: #b9c0ca; }
-      .scene .car.away { opacity: .25; } .scene .car .bolt { fill: #3ddc84; }
+      .scene .car .body { fill: url(#hcCarBody); stroke: #5f6a78; stroke-width: .8; }
+      .scene .car .glass { fill: url(#hcCarGlass); } .scene .car .reflect { fill: rgba(255,255,255,.18); }
+      .scene .car .pillar { stroke: #7c8796; stroke-width: 4; }
+      .scene .car .shoulder { fill: none; stroke: rgba(255,255,255,.45); stroke-width: 1.2; }
+      .scene .car .cut { fill: none; stroke: rgba(30,40,55,.28); stroke-width: .9; }
+      .scene .car .handle { fill: #5f6a78; } .scene .car .mirror { fill: #6f7a88; }
+      .scene .car .headlight { fill: #eef6ff; filter: drop-shadow(0 0 2px rgba(200,230,255,.9)); }
+      .scene .car .taillight { fill: #d63b3b; } .scene .car .skirt { fill: rgba(20,25,32,.35); }
+      .scene .car .port { fill: #4b5563; } .scene .car .port.on { fill: #2b2f36; }
+      .scene .car .tire { fill: #1d2127; } .scene .car .rim { fill: #c9cfd7; stroke: #8d96a2; stroke-width: 1.2; }
+      .scene .car .spoke { stroke: #7d8693; stroke-width: 2.6; stroke-linecap: round; } .scene .car .hubcap { fill: #5b636f; }
+      .scene .car .shadow { fill: rgba(0,0,0,.18); } .scene .car .well { fill: #2a2f37; }
+      .scene .car.away { opacity: .3; } .scene .car .bolt { fill: #3ddc84; }
       .scene .ground { stroke: #9aa3ad; }
       .head.ok { color: var(--hc-green); } .head.bad { color: var(--hc-red); }
       .phases { display: grid; gap: 8px; margin: 8px 0 4px; }
