@@ -73,6 +73,33 @@ const P = scen.pr || {};
 const ip=(id,v,attr={})=>add(id,v,'pr',{platform:'ipp',attr});
 ip('sensor.epson_et_2850_series',P.state??'idle',{options:['idle','printing','stopped'],info:'EPSON ET-2850 Series',location:'',state_message:P.msg??null});
 for (const [c,v] of [['black',P.black??19],['cyan',44],['magenta',46],['yellow',P.yellow??46]]) ip(`sensor.epson_et_2850_series_${c}_ink`,v,{marker_type:'ink',marker_low_level:15,marker_high_level:100,unit_of_measurement:'%',friendly_name:`EPSON ET-2850 Series ${c[0].toUpperCase()+c.slice(1)} ink`});
+// FRITZ!Box (fritz) – Router plus Repeater, damit die Geräteauswahl geprüft wird
+const F = scen.fb || {};
+devices.fb={name:'FRITZ!Box 7590 AX',model:'FRITZ!Box 7590 AX',sw_version:'8.25'}; devices.rep={name:'repeaterkeller',model:'FRITZ!Repeater'};
+const fb=(id,v,tk,attr={},o={})=>add(id,v,o.dev||'fb',{platform:'fritz',tk,attr,changed:o.changed});
+fb('sensor.repeaterkeller_cpu_temperatur',65,'cpu_temperature',{unit_of_measurement:'°C'},{dev:'rep'});
+fb('sensor.fritz_box_7590_ax_download_durchsatz',F.down??2406.5,'kb_s_received',{unit_of_measurement:'kB/s'});
+fb('sensor.fritz_box_7590_ax_upload_durchsatz',F.up??121,'kb_s_sent',{unit_of_measurement:'kB/s'});
+fb('sensor.fritz_box_7590_ax_link_download_durchsatz',108169,'link_kb_s_received',{unit_of_measurement:'kbit/s'});
+fb('sensor.fritz_box_7590_ax_link_upload_durchsatz',29628,'link_kb_s_sent',{unit_of_measurement:'kbit/s'});
+fb('sensor.fritz_box_7590_ax_maximaler_download_durchsatz_der_verbindung',104931,'max_kb_s_received',{unit_of_measurement:'kbit/s'});
+fb('sensor.fritz_box_7590_ax_maximaler_upload_durchsatz_der_verbindung',28816,'max_kb_s_sent',{unit_of_measurement:'kbit/s'});
+fb('sensor.fritz_box_7590_ax_gb_empfangen',263.4,'gb_received',{unit_of_measurement:'GB'});
+fb('sensor.fritz_box_7590_ax_gb_gesendet',37.9,'gb_sent',{unit_of_measurement:'GB'});
+fb('binary_sensor.fritz_box_7590_ax_verbindung',F.online??'on','is_connected',{},{changed:F.offFor??3600e3});
+fb('binary_sensor.fritz_box_7590_ax_verbinden','on','is_linked');
+fb('sensor.fritz_box_7590_ax_externe_ip','203.0.113.42','external_ip');
+fb('sensor.fritz_box_7590_ax_verbindungsverfugbarkeit',iso(15.2*3600e3),'connection_uptime');
+fb('sensor.fritz_box_7590_ax_letzter_neustart',iso(9.4*86400e3),'device_uptime');
+fb('sensor.fritz_box_7590_ax_cpu_temperatur',85,'cpu_temperature',{unit_of_measurement:'°C'});
+fb('sensor.fritz_box_7590_ax_link_download_leistungsdampfung',16,'link_attenuation_received',{unit_of_measurement:'dB'});
+fb('sensor.fritz_box_7590_ax_rauschabstand_zum_link_download',8,'link_noise_margin_received',{unit_of_measurement:'dB'});
+fb('update.fritz_box_7590_ax_fritz_os',F.update??'off',undefined,{title:'FRITZ!OS',installed_version:'8.25',latest_version:F.update==='on'?'8.30':'8.25'});
+fb('switch.fritz_box_7590_ax_wi_fi_heimnetz',F.w24??'on',undefined,{friendly_name:'FRITZ!Box 7590 AX WLAN-Haupt (2,4 GHz)'});
+fb('switch.fritz_box_7590_ax_wi_fi_heimnetz_5g',F.w5??'on',undefined,{friendly_name:'FRITZ!Box 7590 AX WLAN-Haupt (5 GHz)'});
+fb('switch.fritz_box_7590_ax_wi_fi_heimnetz_gast',F.guest??'on',undefined,{friendly_name:'FRITZ!Box 7590 AX WLAN-Gast'});
+fb('image.fritz_box_7590_ax_heimnetz_gast','2026-11-17T12:33:02Z',undefined,{});
+for (let i=0;i<17;i++) fb(`device_tracker.geraet_${i}`,i<15?'home':'not_home',undefined,{connection_type:i%4===0?'LAN':'WLAN'},{dev:'t'+i});
 const midnight=new Date(); midnight.setHours(0,0,0,0);
 const hass={states,entities,devices,locale:{language:'de'},language:'de',callService:()=>Promise.resolve(),
  callWS:(m)=>{const res={}; const h=(o)=>({start:midnight.getTime()+o*3600e3});
@@ -80,9 +107,11 @@ const hass={states,entities,devices,locale:{language:'de'},language:'de',callSer
   res['sensor.wetterstation_ch_regenzahler']=[{...h(-1),state:549.3,change:0},{...h(2),change:1.4}];
   res['sensor.wetterstation_ch_sonnenscheindauer']=[{...h(-1),state:0,change:0}];
   const ms=new Date(); ms.setDate(1); ms.setHours(0,0,0,0);
+  res['sensor.fritz_box_7590_ax_gb_empfangen']=[{...h(-1),state:259.1}];
+  res['sensor.fritz_box_7590_ax_gb_gesendet']=[{...h(-1),state:37.2}];
   res['sensor.tesla_wall_connector_energie']=[{start:ms.getTime()-86400e3,state:2371.2},{start:midnight.getTime()-86400e3,state:2490.1}];
   return Promise.resolve(res);}};
-const tags={weather:'hc-weather-station-card',nas:'hc-diskstation-card',dw:'hc-dishwasher-card',wb:'hc-wallbox-card',pr:'hc-printer-card'};
+const tags={weather:'hc-weather-station-card',nas:'hc-diskstation-card',dw:'hc-dishwasher-card',wb:'hc-wallbox-card',pr:'hc-printer-card',fb:'hc-fritzbox-card'};
 const card=document.createElement(tags[q.get('card')]||tags.weather);
 card.setConfig({}); document.getElementById('wrap').appendChild(card); card.hass=hass; window.card=card;
 </script></body></html>

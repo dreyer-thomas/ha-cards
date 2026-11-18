@@ -13,7 +13,7 @@
  * MIT-Lizenz, Nutzung auf eigene Verantwortung.
  */
 
-const HC_VERSION = "0.2.2";
+const HC_VERSION = "0.3.0";
 
 // Material-Design-Icons (Apache 2.0, Pictogrammers) als Inline-SVG
 const HC_ICONS = {
@@ -40,6 +40,10 @@ const HC_ICONS = {
   play: "M8,5.14V19.14L19,12.14L8,5.14Z",
   stop: "M18,18H6V6H18V18Z",
   salt: "M12,2L9,9H15L12,2M7,10A2,2 0 0,0 5,12V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V12A2,2 0 0,0 17,10H7Z",
+  wifi: "M12,21L15.6,16.2C14.6,15.45 13.35,15 12,15C10.65,15 9.4,15.45 8.4,16.2L12,21M12,3C7.95,3 4.21,4.34 1.2,6.6L3,9C5.5,7.12 8.62,6 12,6C15.38,6 18.5,7.12 21,9L22.8,6.6C19.79,4.34 16.05,3 12,3M12,9C9.3,9 6.81,9.89 4.8,11.4L6.6,13.8C8.1,12.67 9.97,12 12,12C14.03,12 15.9,12.67 17.4,13.8L19.2,11.4C17.19,9.89 14.7,9 12,9Z",
+  qrcode: "M3,11H5V13H3V11M11,5H13V9H11V5M9,11H13V15H11V13H9V11M15,11H17V13H19V11H21V13H19V15H21V19H19V21H17V19H13V21H11V17H15V15H17V13H15V11M19,19V15H17V19H19M15,3H21V9H15V3M17,5V7H19V5H17M3,3H9V9H3V3M5,5V7H7V5H5M3,15H9V21H3V15M5,17V19H7V17H5Z",
+  lan: "M10,2C8.89,2 8,2.89 8,4V7C8,8.11 8.89,9 10,9H11V11H2V13H6V15H5C3.89,15 3,15.89 3,17V20C3,21.11 3.89,22 5,22H9C10.11,22 11,21.11 11,20V17C11,15.89 10.11,15 9,15H8V13H16V15H15C13.89,15 13,15.89 13,17V20C13,21.11 13.89,22 15,22H19C20.11,22 21,21.11 21,20V17C21,15.89 20.11,15 19,15H18V13H22V11H13V9H14C15.11,9 16,8.11 16,7V4C16,2.89 15.11,2 14,2H10M10,4H14V7H10V4M5,17H9V20H5V17M15,17H19V20H15V17Z",
+  router: "M20.2,5.9L21,5.1C19.6,3.7 17.8,3 16,3C14.2,3 12.4,3.7 11,5.1L11.8,5.9C13,4.8 14.5,4.2 16,4.2C17.5,4.2 19,4.8 20.2,5.9M19.3,6.7C18.4,5.8 17.2,5.3 16,5.3C14.8,5.3 13.6,5.8 12.7,6.7L13.5,7.5C14.2,6.8 15.1,6.5 16,6.5C16.9,6.5 17.8,6.8 18.5,7.5L19.3,6.7M19,13H17V9H15V13H5A2,2 0 0,0 3,15V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V15A2,2 0 0,0 19,13M8,18H6V16H8V18M11.5,18H9.5V16H11.5V18M15,18H13V16H15V18Z",
 };
 
 const hcIcon = (name, cls = "") =>
@@ -1201,6 +1205,243 @@ class HcPrinterCard extends HcBaseCard {
 }
 
 // ---------------------------------------------------------------------------
+// FRITZ!Box (Integration fritz, „AVM FRITZ!Box Tools“)
+// ---------------------------------------------------------------------------
+const HC_FB_ROLES = {
+  down: [["kb_s_received"], /(?<!link)_download_durchsatz$|kb_s_received/],
+  up: [["kb_s_sent"], /(?<!link)_upload_durchsatz$|kb_s_sent/],
+  link_down: [["link_kb_s_received"], /link_download_durchsatz|link_kb_s_received/],
+  link_up: [["link_kb_s_sent"], /link_upload_durchsatz|link_kb_s_sent/],
+  max_down: [["max_kb_s_received"], /maximaler_download|max_kb_s_received/],
+  max_up: [["max_kb_s_sent"], /maximaler_upload|max_kb_s_sent/],
+  gb_down: [["gb_received"], /gb_empfangen|gb_received/],
+  gb_up: [["gb_sent"], /gb_gesendet|gb_sent/],
+  online: [["is_connected"], /^binary_sensor\..*_verbindung$|is_connected/],
+  ip: [["external_ip"], /externe_ip$|external_ip$/],
+  since: [["connection_uptime"], /verbindungsverfugbarkeit|connection_uptime/],
+  boot: [["device_uptime"], /letzter_neustart|device_uptime/],
+  cpu_temp: [["cpu_temperature"], /cpu_temperatur|cpu_temperature/],
+  att: [["link_attenuation_received"], /download_leistungsdampfung|attenuation_received/],
+  snr: [["link_noise_margin_received"], /rauschabstand_zum_link_download|noise_margin_received/],
+  update: [[], /^update\./],
+};
+// Datenrate in bit/s
+const HC_RATE = { "bit/s": 1, "kbit/s": 1e3, "Mbit/s": 1e6, "Gbit/s": 1e9, "B/s": 8, "kB/s": 8e3, "KiB/s": 8192, "MB/s": 8e6, "MiB/s": 8388608 };
+
+class HcFritzBoxCard extends HcBaseCard {
+  static getStubConfig() { return {}; }
+  static getConfigElement() { return document.createElement("hc-generic-card-editor"); }
+  _emptyText() { return "Keine FRITZ!Box gefunden (Integration „AVM FRITZ!Box Tools“)."; }
+
+  _discover() {
+    const r = this._discoverPlatform("fritz", HC_FB_ROLES, "down");
+    if (!r || !r.map.down) return;
+    const map = r.map;
+    // WLAN-Schalter des Routers (Haupt-WLAN je Band, Gast-WLAN), QR-Code des Gast-WLANs
+    const wifi = [];
+    for (const e of r.own) {
+      const name = this._hass.states[e.entity_id]?.attributes.friendly_name || e.entity_id;
+      if (e.entity_id.startsWith("switch.") && /wi_fi|wifi|wlan/i.test(`${e.entity_id} ${e.translation_key || ""}`)) {
+        const key = `wifi_${wifi.length}`;
+        map[key] = e.entity_id;
+        wifi.push({ key, guest: /gast|guest/i.test(`${e.entity_id} ${name}`), name });
+      } else if (e.entity_id.startsWith("image.")) {
+        map.qr = e.entity_id;
+      }
+    }
+    const dev = this._hass.devices?.[r.own[0]?.device_id];
+    const prefix = (dev?.name_by_user || dev?.name || "").trim();
+    for (const w of wifi) {
+      let label = prefix && w.name.startsWith(prefix) ? w.name.slice(prefix.length).trim() : w.name;
+      w.label = label.replace(/^WLAN-?/, "").trim() || (w.guest ? "Gast" : "WLAN");
+    }
+    wifi.sort((a, b) => a.guest - b.guest || a.label.localeCompare(b.label));
+    this._wifi = wifi;
+    this._map = map;
+  }
+
+  _bits(key) {
+    const st = this._st(key);
+    const v = st ? parseFloat(st.state) : NaN;
+    if (!Number.isFinite(v)) return null;
+    return v * (HC_RATE[st.attributes.unit_of_measurement] ?? 1e3);
+  }
+
+  _mbit(bits, digits) {
+    if (bits === null) return "–";
+    const m = bits / 1e6;
+    return `${this._fmt(m, digits ?? (m < 10 ? 1 : 0))} Mbit/s`;
+  }
+
+  _dur(ms) {
+    const min = Math.max(0, Math.round(ms / 60000));
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 48) return `${h} h ${min % 60} min`;
+    const d = Math.floor(h / 24);
+    return `${d} Tage${h % 24 ? ` ${h % 24} h` : ""}`;
+  }
+
+  _time(key) {
+    const t = Date.parse(this._st(key)?.state || "");
+    return Number.isFinite(t) ? t : null;
+  }
+
+  _clients() {
+    let wlan = 0, lan = 0;
+    for (const e of Object.values(this._hass.entities || {})) {
+      if (e.platform !== "fritz" || !e.entity_id.startsWith("device_tracker.")) continue;
+      const st = this._hass.states[e.entity_id];
+      if (!st || st.state !== "home") continue;
+      if (/lan/i.test(st.attributes.connection_type || "") && !/wlan/i.test(st.attributes.connection_type)) lan++; else wlan++;
+    }
+    return { wlan, lan, all: wlan + lan };
+  }
+
+  _render() {
+    this._ensureStats(["gb_down", "gb_up"]);
+    const online = this._on("online");
+    const down = this._bits("down"), up = this._bits("up");
+    const maxDown = this._bits("max_down") ?? this._bits("link_down");
+    const maxUp = this._bits("max_up") ?? this._bits("link_up");
+    const upd = this._st("update");
+    const since = this._time("since"), boot = this._time("boot");
+    const ip = this._st("ip")?.state;
+    const temp = this._num("cpu_temp");
+    let title, sub, level = "ok";
+    if (online === false) {
+      level = "bad"; title = "Keine Internetverbindung";
+      const lc = Date.parse(this._st("online").last_changed);
+      sub = Number.isFinite(lc) ? `seit ${this._clock(lc)} Uhr (${this._dur(Date.now() - lc)})` : "";
+    } else if (upd?.state === "on") {
+      level = "warn"; title = `${upd.attributes.title || "Firmware"}-Update verfügbar`;
+      sub = `${upd.attributes.installed_version || "?"} → ${upd.attributes.latest_version || "?"}`;
+    } else {
+      title = "Online";
+      sub = [since ? `verbunden seit ${this._dur(Date.now() - since)}` : "", ip && ip !== "unavailable" ? `IP ${ip}` : ""].filter(Boolean).join(" · ");
+    }
+    const load = down !== null && maxDown ? Math.max(0, Math.min(100, (down / maxDown) * 100)) : 0;
+    const loadCls = load >= 90 ? "bad" : load >= 70 ? "warn" : "ok";
+    const gbD = this._sinceMidnight("gb_down"), gbU = this._sinceMidnight("gb_up");
+    const gb = (v, key) => v === null ? `${this._fmt(this._num(key), 0)} GB` : v < 1 ? `${this._fmt(v * 1000, 0)} MB` : `${this._fmt(v, 1)} GB`;
+    const cl = this._clients();
+    const wifi = (this._wifi || []).map((w) => {
+      const on = this._on(w.key);
+      const qr = w.guest && this._map.qr;
+      return `<div class="wrow">
+        <span class="wic ${on ? "on" : ""}">${hcIcon("wifi")}</span>
+        <span class="wl">${hcEsc(w.guest ? "Gäste-WLAN" : `WLAN ${w.label.replace(/^Haupt\s*/i, "")}`)}</span>
+        ${qr ? `<button class="qrb click" data-more="qr" aria-label="QR-Code des Gäste-WLANs anzeigen">${hcIcon("qrcode")}</button>` : "<span></span>"}
+        <button class="sw ${on ? "on" : ""}" data-action="wifi:${w.key}" role="switch" aria-checked="${on ? "true" : "false"}" aria-label="${hcEsc(w.label)} ${on ? "ausschalten" : "einschalten"}"><span></span></button>
+      </div>`;
+    }).join("");
+    const att = this._num("att"), snr = this._num("snr");
+    const ver = upd?.attributes.installed_version || this._hass.devices?.[this._deviceId]?.sw_version;
+    return `
+      ${this._heroFb(online, down, up, (this._wifi || []).filter((w) => this._on(w.key)))}
+      <div class="main">
+        <div class="head ${level}">${hcEsc(title)}</div>
+        <div class="sub">${hcEsc(sub)}</div>
+        <div class="big">
+          <button class="soc click" data-more="down" aria-label="Download: Verlauf anzeigen">
+            <span class="bn">${down === null ? "–" : this._fmt(down / 1e6, down < 1e7 ? 1 : 0)}</span><span class="bu">Mbit/s</span><div class="bl">${hcIcon("download", "sm blue")}Download</div></button>
+          <button class="right soc click" data-more="up" aria-label="Upload: Verlauf anzeigen">
+            <span class="bn2">${this._mbit(up)}</span><div class="bl">${hcIcon("upload", "sm green")}Upload</div></button>
+        </div>
+        <div class="bar"><span class="fill ${loadCls}" style="width:${load}%"></span></div>
+        <div class="barlbl"><span>${maxDown ? `${this._fmt(load, 0)} % ausgelastet` : ""}</span><span>${maxDown ? `Anschluss ${this._fmt(maxDown / 1e6, 0)} / ${this._fmt((maxUp ?? 0) / 1e6, 0)} Mbit/s` : ""}</span></div>
+        <div class="tiles">
+          ${this._tile("download", gb(gbD, "gb_down"), "Heute empfangen", "", "gb_down")}
+          ${this._tile("upload", gb(gbU, "gb_up"), "Heute gesendet", "", "gb_up")}
+          ${this._tile("lan", `${cl.all} Geräte`, cl.all ? `${cl.wlan} WLAN · ${cl.lan} LAN` : "im Netz")}
+          ${this._tile("thermo", `${this._fmt(temp, 0)} °C`, "CPU-Temperatur", temp !== null && temp >= 95 ? "amber" : "", "cpu_temp")}
+        </div>
+        ${wifi ? `<div class="wifi">${wifi}</div>` : ""}
+      </div>
+      <div class="foot">
+        <span>${hcIcon("router")}${hcEsc([ver ? `${upd?.attributes.title || "Firmware"} ${ver}` : "", boot ? `Neustart vor ${this._dur(Date.now() - boot)}` : ""].filter(Boolean).join(" · "))}</span>
+        ${att !== null || snr !== null ? `<span>${hcIcon("chart")}Leitung: Dämpfung ${this._fmt(att, 0)} dB · Rauschabstand ${this._fmt(snr, 0)} dB</span>` : ""}
+      </div>`;
+  }
+
+  _heroFb(online, down, up, wifiOn) {
+    const off = online === false;
+    const dOn = !off && down !== null && down > 2e5, uOn = !off && up !== null && up > 2e5;
+    const led = (x, cls) => `<circle class="led ${cls}" cx="${x}" cy="137" r="3"/>`;
+    const guestOn = wifiOn.some((w) => w.guest), mainOn = wifiOn.some((w) => !w.guest);
+    const waves = mainOn || guestOn ? `<g class="waves ${guestOn && !mainOn ? "guest" : ""}">
+        <path d="M168 92 a 26 26 0 0 1 44 0"/><path d="M158 82 a 40 40 0 0 1 64 0"/><path d="M148 72 a 54 54 0 0 1 84 0"/></g>` : "";
+    return `
+      <div class="hero fb">
+        <div class="hero__top"><div class="hero__title">${hcEsc(this._config.title || this._devName("Router"))}</div>${this._pill(5 * 60000, off)}</div>
+        <svg class="scene" viewBox="0 0 400 190" role="img" aria-label="Router">
+          ${waves}
+          <rect class="body" x="110" y="112" width="160" height="40" rx="12"/>
+          <rect class="top" x="110" y="112" width="160" height="10" rx="5"/>
+          ${led(132, "ok")}${led(146, off ? "bad" : "ok")}${led(160, mainOn ? "ok" : "off")}${led(174, guestOn ? "ok" : "off")}
+          <path class="feet" d="M130 152 v6 M250 152 v6"/>
+          <path class="flow ${dOn ? "on" : ""} down" d="M334 98 C 324 118 302 126 276 126"/>
+          <path class="flow ${uOn ? "on" : ""} up" d="M276 140 C 316 140 346 128 354 98"/>
+          ${off ? `<path class="cut" d="M318 108 l12 12 M330 108 l-12 12"/>` : ""}
+          <g class="cloudicon ${off ? "off" : ""}" transform="translate(326 60) scale(1.6)"><path d="${HC_ICONS.cloud}"/></g>
+          <line class="ground" x1="20" y1="158" x2="380" y2="158"/>
+        </svg>
+      </div>`;
+  }
+
+  _action(a) {
+    if (!a.startsWith("wifi:")) return;
+    const key = a.slice(5);
+    const w = (this._wifi || []).find((x) => x.key === key);
+    const id = this._map[key];
+    if (!w || !id) return;
+    const on = this._on(key);
+    if (on && !w.guest) {
+      this._confirmCall(`WLAN ${w.label} ausschalten? Alle Geräte in diesem WLAN verlieren die Verbindung – auch dieses Gerät, falls es darüber verbunden ist.`, "switch", "turn_off", { entity_id: id });
+      return;
+    }
+    this._hass.callService("switch", on ? "turn_off" : "turn_on", { entity_id: id }).catch((err) => {
+      this.dispatchEvent(new CustomEvent("hass-notification", { detail: { message: err?.message || String(err) }, bubbles: true, composed: true }));
+    });
+  }
+
+  _styles() {
+    return `
+      .hero.fb { background: linear-gradient(180deg, #3d5a80 0%, #7d97b8 55%, #cfd9e5 100%); }
+      .scene .body { fill: #f4f6f9; stroke: #c3cbd6; stroke-width: 2; } .scene .top { fill: #dfe4ea; }
+      .scene .feet { stroke: #8f9aa8; stroke-width: 5; stroke-linecap: round; }
+      .scene .led.ok { fill: #3ddc84; filter: drop-shadow(0 0 3px #3ddc84); }
+      .scene .led.bad { fill: #ff5f57; filter: drop-shadow(0 0 4px #ff5f57); animation: hc-blink 1s steps(2) infinite; }
+      .scene .led.off { fill: #aab3bf; }
+      @keyframes hc-blink { 50% { opacity: .25; } }
+      .scene .waves path { fill: none; stroke: rgba(255,255,255,.85); stroke-width: 4; stroke-linecap: round; animation: hc-wave 2.4s ease-in-out infinite; }
+      .scene .waves path:nth-child(2) { animation-delay: .3s; } .scene .waves path:nth-child(3) { animation-delay: .6s; }
+      .scene .waves.guest path { stroke: rgba(255,214,120,.9); }
+      @keyframes hc-wave { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+      .scene .cloudicon path { fill: #eef3f8; } .scene .cloudicon.off path { fill: #9aa6b5; }
+      .scene .flow.up { --c: #3ddc84; } .scene .flow.down { --c: #8fd0ff; }
+      .scene .cut { stroke: #ff5f57; stroke-width: 4; stroke-linecap: round; }
+      .head.ok { color: var(--hc-green); } .head.warn { color: #b7791f; } .head.bad { color: var(--hc-red); }
+      .fill.ok { background: var(--hc-blue); } .fill.warn { background: var(--hc-amber); } .fill.bad { background: var(--hc-red); }
+      .big .right { text-align: right; } .big .right.soc { margin: -2px -6px -2px 0; }
+      .bl { display: flex; align-items: center; gap: 6px; } .right .bl { justify-content: flex-end; }
+      .ic.sm { width: 18px; height: 18px; }
+      .tiles { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .tile > div { min-width: 0; }
+      .wifi { display: grid; gap: 2px; margin: 0 0 12px; }
+      .wrow { display: grid; grid-template-columns: 28px 1fr 40px 52px; align-items: center; gap: 10px; padding: 8px 4px; }
+      .wic .ic { fill: #9aa3ad; } .wic.on .ic { fill: var(--hc-blue); }
+      .wl { font-weight: 600; }
+      .qrb { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; }
+      .qrb .ic { fill: var(--hc-fg2); width: 22px; height: 22px; }
+      .sw { position: relative; width: 48px; height: 28px; border-radius: 999px; background: var(--hc-track); transition: background .2s; }
+      .sw span { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .2s; }
+      .sw.on { background: var(--hc-blue); } .sw.on span { transform: translateX(20px); }
+      .sw:focus-visible { outline: 2px solid var(--hc-blue); outline-offset: 2px; }
+      @media (prefers-reduced-motion: reduce) { .scene .waves path, .scene .led.bad { animation: none; } }`;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Gemeinsame Gestaltung
 // ---------------------------------------------------------------------------
 const HC_STYLES = `
@@ -1238,7 +1479,7 @@ const HC_STYLES = `
   .fill { position: absolute; inset: 0 auto 0 0; border-radius: 999px; transition: width .6s; }
   .barlbl { display: flex; justify-content: space-between; color: var(--hc-fg2); font-size: 14px; margin-top: 10px; }
   .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 18px 0 12px; }
-  .tile { display: flex; align-items: center; gap: 14px; background: var(--hc-tile); border-radius: 16px; padding: 14px 16px; text-align: left; width: 100%; }
+  .tile { display: flex; align-items: center; gap: 14px; background: var(--hc-tile); border-radius: 16px; padding: 14px 16px; text-align: left; width: 100%; box-sizing: border-box; }
   .tile .ic { fill: var(--hc-fg2); } .tile .ic.amber { fill: var(--hc-amber); } .tile .ic.green { fill: var(--hc-green); } .tile .ic.blue { fill: var(--hc-blue); }
   .tv { font-size: 18px; font-weight: 700; } .tl { color: var(--hc-fg2); font-size: 14px; }
   .click { cursor: pointer; transition: background .15s; }
@@ -1308,6 +1549,7 @@ hcDefine("hc-diskstation-card-editor", HcNasEditor);
 hcDefine("hc-dishwasher-card", HcDishwasherCard);
 hcDefine("hc-wallbox-card", HcWallboxCard);
 hcDefine("hc-printer-card", HcPrinterCard);
+hcDefine("hc-fritzbox-card", HcFritzBoxCard);
 hcDefine("hc-generic-card-editor", HcGenericEditor);
 hcDefine("hc-wallbox-card-editor", HcWallboxEditor);
 window.customCards = window.customCards || [];
@@ -1317,5 +1559,6 @@ for (const c of [
   { type: "hc-dishwasher-card", name: "Geschirrspüler (ha-cards)", description: "Home-Connect-Geschirrspüler: Programm, Restzeit, Fortschritt, Salz/Klarspüler, Start/Stopp." },
   { type: "hc-wallbox-card", name: "Ladestation (ha-cards)", description: "Tesla Wall Connector: Ladeleistung, Phasen, Ladevorgang, kWh heute/Monat/gesamt." },
   { type: "hc-printer-card", name: "Drucker (ha-cards)", description: "IPP-Drucker: Status und Tintenfüllstände mit Warnung." },
+  { type: "hc-fritzbox-card", name: "FRITZ!Box (ha-cards)", description: "Internetverbindung, Durchsatz, Auslastung, Datenmenge heute, Geräte im Netz, WLAN und Gäste-WLAN mit QR-Code." },
 ]) if (!window.customCards.some((x) => x.type === c.type)) window.customCards.push({ ...c, preview: true });
 console.info(`%c HA-CARDS %c ${HC_VERSION} `, "background:#2f7fe0;color:#fff;border-radius:3px 0 0 3px", "background:#14213d;color:#fff;border-radius:0 3px 3px 0");

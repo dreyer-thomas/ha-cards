@@ -1,7 +1,7 @@
 # ha-cards – Dashboard-Karten für Home Assistant
 
 Karten im Stil der Growatt-SPH-Karte aus
-[growatt-modbus-ha](https://github.com/dreyer-thomas/growatt-modbus-ha). Beide finden ihre
+[growatt-modbus-ha](https://github.com/dreyer-thomas/growatt-modbus-ha). Alle finden ihre
 Entitäten selbst – die minimale Konfiguration ist nur der Kartentyp.
 
 | Wetterstation | Regen & Wind | Nacht | DiskStation | Warnung |
@@ -113,10 +113,28 @@ type: custom:hc-printer-card
 
 Benötigt die Integration **Internet Printing Protocol (IPP)**.
 
+## FRITZ!Box
+
+```yaml
+type: custom:hc-fritzbox-card
+```
+
+| Online | Offline |
+|---|---|
+| ![](screenshots/fritzbox.png) | ![](screenshots/fritzbox-offline.png) |
+
+- Router mit Status-LEDs, WLAN-Wellen und Datenfluss zum Internet; Unterbrechung rot markiert
+- Download/Upload in Mbit/s, Auslastung des Anschlusses, Leitungswerte (DSL)
+- Datenmenge heute (empfangen/gesendet), Geräte im Netz (WLAN/LAN), CPU-Temperatur
+- WLAN und Gäste-WLAN schalten; QR-Code des Gäste-WLANs per Tipp. Abschalten des Haupt-WLANs wird vorher bestätigt
+- Hinweis bei verfügbarem FRITZ!OS-Update
+
+Benötigt die Integration **AVM FRITZ!Box Tools**. Repeater werden übergangen; bei mehreren Routern `device_id` angeben.
+
 ## Entwicklung
 
 `tools/preview.html` zeigt die Karten mit Beispieldaten im Browser
-(`?card=weather`, `nas`, `dw`, `wb` oder `pr`).(`?card=weather` bzw. `?card=nas`).
+(`?card=weather`, `nas`, `dw`, `wb`, `pr` oder `fb`).
 
 Gestaltung angelehnt an die Karten von [BavarianData](https://github.com/JustChr/BavarianData) (MIT).
 
