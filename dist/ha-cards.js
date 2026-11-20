@@ -13,7 +13,7 @@
  * MIT-Lizenz, Nutzung auf eigene Verantwortung.
  */
 
-const HC_VERSION = "0.4.0";
+const HC_VERSION = "0.4.1";
 
 // Material-Design-Icons (Apache 2.0, Pictogrammers) als Inline-SVG
 const HC_ICONS = {
@@ -1735,6 +1735,184 @@ class HcVentilationCard extends HcBaseCard {
 }
 
 // ---------------------------------------------------------------------------
+// Müllabfuhr (Integration waste_collection_schedule)
+// ---------------------------------------------------------------------------
+const HC_BINS = [
+  [/rest|haus/i, "#4b5260", "Restmüll"], [/bio|grün|kompost/i, "#8a5a2b", "Biomüll"],
+  [/gelb|wertstoff|verpack|plastik/i, "#f0c419", "Gelbe Tonne"], [/papier|pappe|blau/i, "#2f7fe0", "Papier"],
+  [/glas/i, "#2fa864", "Glas"], [/schad|sonder/i, "#d9534f", "Schadstoffe"], [/sperr/i, "#7a5af5", "Sperrmüll"],
+];
+const HC_DAY = 86400e3;
+
+class HcWasteCard extends HcBaseCard {
+  static getStubConfig() { return {}; }
+  static getConfigElement() { return document.createElement("hc-generic-card-editor"); }
+  _emptyText() { return "Keine Abfuhrtermine gefunden (Integration „Waste Collection Schedule“)."; }
+
+  _discover() {
+    const hass = this._hass;
+    let ids = this._config.entities;
+    if (!ids) {
+      ids = Object.values(hass.entities || {}).filter((e) => e.platform === "waste_collection_schedule" && e.entity_id.startsWith("sensor."))
+        .map((e) => e.entity_id);
+    }
+    if (!ids || !ids.length) return;
+    const map = {};
+    ids.forEach((id, i) => { map[`s${i}`] = id; });
+    this._map = map;
+  }
+
+  _bin(type) {
+    const d = HC_BINS.find(([re]) => re.test(type));
+    return { type, color: d ? d[1] : "#8a94a3", order: d ? HC_BINS.indexOf(d) : 9 };
+  }
+
+  // Termine aus den Sensoren: Attribute "JJJJ-MM-TT": "Typ, Typ" (Darstellung „upcoming“), sonst Tage bis zur Abholung
+  _collections() {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const seen = new Set(), out = [];
+    const push = (date, type) => {
+      const t = type.trim(); if (!t) return;
+      const key = `${date.getTime()}|${t}`; if (seen.has(key)) return;
+      seen.add(key); out.push({ date, type: t, days: Math.round((date - today) / HC_DAY) });
+    };
+    for (const id of Object.values(this._map)) {
+      const st = this._hass.states[id];
+      if (!st) continue;
+      const dateKeys = Object.keys(st.attributes).filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k));
+      if (dateKeys.length) {
+        for (const k of dateKeys) {
+          const [y, m, d] = k.split("-").map(Number);
+          const date = new Date(y, m - 1, d);
+          if (date < today) continue;
+          String(st.attributes[k]).split(",").forEach((t) => push(date, t));
+        }
+      } else {
+        const n = parseInt(st.state, 10);
+        if (!Number.isFinite(n)) continue;
+        const name = (st.attributes.friendly_name || id).replace(/^Waste Collection Schedule\s*/i, "");
+        push(new Date(today.getTime() + n * HC_DAY), name);
+      }
+    }
+    return out.sort((a, b) => a.date - b.date || this._bin(a.type).order - this._bin(b.type).order);
+  }
+
+  _rel(days) {
+    return days === 0 ? "heute" : days === 1 ? "morgen" : days === 2 ? "übermorgen" : `in ${days} Tagen`;
+  }
+
+  _date(d, long = false) {
+    return d.toLocaleDateString(this._lang, long ? { weekday: "long", day: "numeric", month: "long" } : { weekday: "short", day: "2-digit", month: "2-digit" });
+  }
+
+  _render() {
+    const all = this._collections();
+    const next = all[0];
+    const nextDay = next ? all.filter((c) => c.days === next.days) : [];
+    // je Tonne der nächste Termin
+    const perBin = [];
+    for (const c of all) if (!perBin.some((p) => p.type === c.type)) perBin.push(c);
+    perBin.sort((a, b) => a.date - b.date || this._bin(a.type).order - this._bin(b.type).order);
+    const binsForHero = [...perBin].sort((a, b) => this._bin(a.type).order - this._bin(b.type).order).slice(0, 5);
+    let title = "Keine Termine", sub = "", level = "";
+    if (next) {
+      const names = nextDay.map((c) => c.type).join(" + ");
+      if (next.days === 0) { title = `Heute: ${names}`; sub = "Tonne steht hoffentlich draußen"; level = "now"; }
+      else if (next.days === 1) { title = `Morgen: ${names}`; sub = "heute Abend rausstellen"; level = "soon"; }
+      else { title = `${this._date(next.date, true).split(",")[0]}: ${names}`; sub = `${this._rel(next.days)} · ${this._date(next.date)}`; }
+    }
+    const rows = perBin.map((c) => {
+      const b = this._bin(c.type);
+      const badge = c.days <= 1 ? (c.days === 0 ? "now" : "soon") : "";
+      return `<div class="wrow2"><span class="bdot" style="background:${b.color}"></span><span class="wn">${hcEsc(c.type)}</span>
+        <span class="wd">${hcEsc(this._date(c.date))}</span><span class="wr ${badge}">${hcEsc(this._rel(c.days))}</span></div>`;
+    }).join("");
+    // zwei Wochen ab Montag dieser Woche
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const cells = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(monday); d.setDate(monday.getDate() + i);
+      const items = all.filter((c) => c.date.getTime() === d.getTime());
+      const past = d < today;
+      return `<div class="cd ${d.getTime() === today.getTime() ? "today" : ""} ${past ? "past" : ""}">
+        <span class="cn">${d.getDate()}</span><span class="cdots">${items.map((c) => `<i style="background:${this._bin(c.type).color}" title="${hcEsc(c.type)}"></i>`).join("")}</span></div>`;
+    }).join("");
+    const heads = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((d) => `<span>${d}</span>`).join("");
+    return `
+      ${this._heroWaste(binsForHero, nextDay)}
+      <div class="main">
+        <div class="head ${level}">${hcEsc(title)}</div>
+        <div class="sub">${hcEsc(sub)}</div>
+        <div class="wlist">${rows}</div>
+        <div class="cal"><div class="chead">${heads}</div><div class="cgrid">${cells}</div></div>
+      </div>`;
+  }
+
+  _heroWaste(bins, nextDay) {
+    const n = Math.max(1, bins.length);
+    const gap = 300 / n;
+    const due = new Set(this._collections().filter((c) => c.days <= 1).map((c) => c.type));
+    const soon = new Set(nextDay.map((c) => c.type));
+    const g = bins.map((c, i) => {
+      const b = this._bin(c.type);
+      const cx = 50 + gap * i + gap / 2;
+      const out = due.has(c.type);
+      const dx = cx - 30, dy = out ? 92 : 70;
+      const s = out ? 1.08 : 0.92;
+      return `<g class="bin ${soon.has(c.type) ? "next" : ""} ${out ? "out" : ""}" transform="translate(${dx} ${dy}) scale(${s})">
+        <ellipse class="bshadow" cx="30" cy="${out ? 86 : 84}" rx="30" ry="4"/>
+        <path class="body" d="M6 16 H54 L49 80 H11 Z" fill="${b.color}"/>
+        <path class="rib" d="M14 26 L17 72 M30 26 V72 M46 26 L43 72"/>
+        <rect class="lid" x="2" y="8" width="56" height="9" rx="3" fill="${b.color}"/>
+        <rect class="handle" x="22" y="3" width="16" height="6" rx="3"/>
+        <circle class="wheel" cx="14" cy="80" r="6"/><circle class="wheel" cx="46" cy="80" r="6"/>
+      </g>`;
+    }).join("");
+    return `
+      <div class="hero waste light">
+        <div class="hero__top"><div class="hero__title">${hcEsc(this._config.title || "Müllabfuhr")}</div></div>
+        <svg class="scene" viewBox="0 0 400 190" role="img" aria-label="Mülltonnen">
+          <rect class="fence" x="0" y="60" width="400" height="100"/>
+          <path class="fencelines" d="${Array.from({ length: 21 }, (_, i) => `M${i * 20} 60 V160`).join(" ")}"/>
+          <rect class="curb" x="0" y="160" width="400" height="12"/>
+          <rect class="street" x="0" y="172" width="400" height="18"/>
+          ${g}
+        </svg>
+      </div>`;
+  }
+
+  _styles() {
+    return `
+      .hero.waste { background: linear-gradient(180deg, #d4e3ef 0%, #e8eff5 100%); }
+      .scene .fence { fill: #c9b79f; } .scene .fencelines { stroke: #b29f86; stroke-width: 2; }
+      .scene .curb { fill: #b8c0ca; } .scene .street { fill: #8c95a1; }
+      .scene .bin { opacity: .55; transition: transform .4s; } .scene .bin.next { opacity: .9; } .scene .bin.out { opacity: 1; }
+      .scene .bshadow { fill: rgba(30,40,55,.18); }
+      .scene .body, .scene .lid { stroke: rgba(0,0,0,.25); stroke-width: 1.5; }
+      .scene .rib { stroke: rgba(0,0,0,.18); stroke-width: 2; stroke-linecap: round; fill: none; }
+      .scene .handle { fill: #2b2f36; } .scene .wheel { fill: #2b2f36; stroke: #6b7380; stroke-width: 2; }
+      .scene .bin.out .lid { animation: hc-lid 2.6s ease-in-out infinite; transform-origin: 2px 12px; transform-box: view-box; }
+      @keyframes hc-lid { 0%, 70%, 100% { transform: rotate(0); } 80% { transform: rotate(-8deg); } 90% { transform: rotate(0); } }
+      .head.soon { color: #b7791f; } .head.now { color: var(--hc-green); }
+      .wlist { display: grid; gap: 2px; margin: 14px 0 12px; }
+      .wrow2 { display: grid; grid-template-columns: 14px 1fr auto 96px; align-items: center; gap: 12px; padding: 9px 4px; border-bottom: 1px solid var(--divider-color, #e1e6ee); }
+      .wrow2:last-child { border-bottom: 0; }
+      .bdot { width: 14px; height: 14px; border-radius: 4px; }
+      .wn { font-weight: 600; } .wd { color: var(--hc-fg2); font-variant-numeric: tabular-nums; }
+      .wr { text-align: right; color: var(--hc-fg2); font-size: 14px; }
+      .wr.soon { color: #b7791f; font-weight: 700; } .wr.now { color: var(--hc-green); font-weight: 700; }
+      .cal { margin: 4px 0 16px; }
+      .chead, .cgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+      .chead span { text-align: center; color: var(--hc-fg2); font-size: 12px; padding-bottom: 4px; }
+      .cd { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 7px; border-radius: 10px; background: var(--hc-tile); min-height: 40px; box-sizing: border-box; }
+      .cd.past { opacity: .4; } .cd.today { outline: 2px solid var(--hc-blue); outline-offset: -2px; }
+      .cn { font-size: 14px; font-weight: 600; }
+      .cdots { display: flex; gap: 3px; } .cdots i { width: 8px; height: 8px; border-radius: 50%; }
+      @media (prefers-reduced-motion: reduce) { .scene .bin.out .lid { animation: none; } }`;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Gemeinsame Gestaltung
 // ---------------------------------------------------------------------------
 const HC_STYLES = `
@@ -1848,6 +2026,7 @@ hcDefine("hc-wallbox-card", HcWallboxCard);
 hcDefine("hc-printer-card", HcPrinterCard);
 hcDefine("hc-fritzbox-card", HcFritzBoxCard);
 hcDefine("hc-ventilation-card", HcVentilationCard);
+hcDefine("hc-waste-card", HcWasteCard);
 hcDefine("hc-ventilation-card-editor", HcVentEditor);
 hcDefine("hc-generic-card-editor", HcGenericEditor);
 hcDefine("hc-wallbox-card-editor", HcWallboxEditor);
@@ -1859,6 +2038,7 @@ for (const c of [
   { type: "hc-wallbox-card", name: "Ladestation (ha-cards)", description: "Tesla Wall Connector: Ladeleistung, Phasen, Ladevorgang, kWh heute/Monat/gesamt." },
   { type: "hc-printer-card", name: "Drucker (ha-cards)", description: "IPP-Drucker: Status und Tintenfüllstände mit Warnung." },
   { type: "hc-ventilation-card", name: "Lüftung (ha-cards)", description: "Lüftungsanlage: Modus wählen, Tagesplan aus den Zeitplänen, nächster Wechsel, Relaisprüfung." },
+  { type: "hc-waste-card", name: "Müllabfuhr (ha-cards)", description: "Nächste Abholung je Tonne, Hinweis zum Rausstellen, Zwei-Wochen-Kalender (Waste Collection Schedule)." },
   { type: "hc-fritzbox-card", name: "FRITZ!Box (ha-cards)", description: "Internetverbindung, Durchsatz, Auslastung, Datenmenge heute, Geräte im Netz, WLAN und Gäste-WLAN mit QR-Code." },
 ]) if (!window.customCards.some((x) => x.type === c.type)) window.customCards.push({ ...c, preview: true });
 console.info(`%c HA-CARDS %c ${HC_VERSION} `, "background:#2f7fe0;color:#fff;border-radius:3px 0 0 3px", "background:#14213d;color:#fff;border-radius:0 3px 3px 0");
