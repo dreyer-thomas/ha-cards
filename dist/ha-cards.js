@@ -13,7 +13,7 @@
  * MIT-Lizenz, Nutzung auf eigene Verantwortung.
  */
 
-const HC_VERSION = "0.3.0";
+const HC_VERSION = "0.4.0";
 
 // Material-Design-Icons (Apache 2.0, Pictogrammers) als Inline-SVG
 const HC_ICONS = {
@@ -43,6 +43,7 @@ const HC_ICONS = {
   wifi: "M12,21L15.6,16.2C14.6,15.45 13.35,15 12,15C10.65,15 9.4,15.45 8.4,16.2L12,21M12,3C7.95,3 4.21,4.34 1.2,6.6L3,9C5.5,7.12 8.62,6 12,6C15.38,6 18.5,7.12 21,9L22.8,6.6C19.79,4.34 16.05,3 12,3M12,9C9.3,9 6.81,9.89 4.8,11.4L6.6,13.8C8.1,12.67 9.97,12 12,12C14.03,12 15.9,12.67 17.4,13.8L19.2,11.4C17.19,9.89 14.7,9 12,9Z",
   qrcode: "M3,11H5V13H3V11M11,5H13V9H11V5M9,11H13V15H11V13H9V11M15,11H17V13H19V11H21V13H19V15H21V19H19V21H17V19H13V21H11V17H15V15H17V13H15V11M19,19V15H17V19H19M15,3H21V9H15V3M17,5V7H19V5H17M3,3H9V9H3V3M5,5V7H7V5H5M3,15H9V21H3V15M5,17V19H7V17H5Z",
   lan: "M10,2C8.89,2 8,2.89 8,4V7C8,8.11 8.89,9 10,9H11V11H2V13H6V15H5C3.89,15 3,15.89 3,17V20C3,21.11 3.89,22 5,22H9C10.11,22 11,21.11 11,20V17C11,15.89 10.11,15 9,15H8V13H16V15H15C13.89,15 13,15.89 13,17V20C13,21.11 13.89,22 15,22H19C20.11,22 21,21.11 21,20V17C21,15.89 20.11,15 19,15H18V13H22V11H13V9H14C15.11,9 16,8.11 16,7V4C16,2.89 15.11,2 14,2H10M10,4H14V7H10V4M5,17H9V20H5V17M15,17H19V20H15V17Z",
+  fan: "M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12.5,2C17,2 17.11,5.57 14.75,6.75C13.76,7.24 13.32,8.29 13.13,9.22C13.61,9.42 14.03,9.73 14.35,10.13C18.05,8.13 22.03,8.92 22.03,12.5C22.03,17 18.46,17.1 17.28,14.73C16.78,13.74 15.72,13.3 14.79,13.11C14.59,13.59 14.28,14 13.88,14.34C15.87,18.03 15.08,22 11.5,22C7,22 6.91,18.42 9.27,17.24C10.25,16.75 10.69,15.71 10.89,14.79C10.4,14.59 9.97,14.27 9.65,13.87C5.96,15.85 2,15.07 2,11.5C2,7 5.56,6.89 6.74,9.26C7.24,10.25 8.29,10.68 9.22,10.87C9.41,10.39 9.73,9.97 10.14,9.65C8.15,5.96 8.94,2 12.5,2Z",
   router: "M20.2,5.9L21,5.1C19.6,3.7 17.8,3 16,3C14.2,3 12.4,3.7 11,5.1L11.8,5.9C13,4.8 14.5,4.2 16,4.2C17.5,4.2 19,4.8 20.2,5.9M19.3,6.7C18.4,5.8 17.2,5.3 16,5.3C14.8,5.3 13.6,5.8 12.7,6.7L13.5,7.5C14.2,6.8 15.1,6.5 16,6.5C16.9,6.5 17.8,6.8 18.5,7.5L19.3,6.7M19,13H17V9H15V13H5A2,2 0 0,0 3,15V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V15A2,2 0 0,0 19,13M8,18H6V16H8V18M11.5,18H9.5V16H11.5V18M15,18H13V16H15V18Z",
 };
 
@@ -1442,6 +1443,298 @@ class HcFritzBoxCard extends HcBaseCard {
 }
 
 // ---------------------------------------------------------------------------
+// Lüftungsanlage (Modus über input_select, Zeitpläne über schedule-Helfer)
+// ---------------------------------------------------------------------------
+const HC_VENT_RE = /l(u|ue|ü)ftung|l(u|ue|ü)fter|vent/i;
+const HC_VENT_COLORS = { aus: "#9aa3ad", off: "#9aa3ad", niedrig: "#62b3ea", low: "#62b3ea", normal: "#2f7fe0",
+  mittel: "#2f7fe0", hoch: "#7a5af5", high: "#7a5af5", party: "#e8833a", stoss: "#e8833a", "stoßlüftung": "#e8833a", boost: "#e8833a" };
+const HC_VENT_PALETTE = ["#9aa3ad", "#62b3ea", "#2f7fe0", "#7a5af5", "#e8833a", "#d6338a"];
+const HC_DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+class HcVentilationCard extends HcBaseCard {
+  static getStubConfig() { return {}; }
+  static getConfigElement() { return document.createElement("hc-ventilation-card-editor"); }
+  _emptyText() { return "Keine Lüftung gefunden. Im YAML-Editor entity: input_select.… angeben."; }
+
+  _discover() {
+    const hass = this._hass, cfg = this._config;
+    const name = (id) => hass.states[id]?.attributes.friendly_name || id;
+    let mode = cfg.entity;
+    if (!mode) {
+      const ids = Object.keys(hass.states).filter((id) => HC_VENT_RE.test(`${id} ${name(id)}`));
+      mode = ids.find((id) => id.startsWith("input_select."))
+        || ids.find((id) => id.startsWith("select.") && (hass.states[id].attributes.options || []).length <= 6);
+    }
+    const st = mode && hass.states[mode];
+    if (!st) return;
+    const options = st.attributes.options || [];
+    const map = { mode };
+    // Zeitpläne: schedule-Helfer, deren Name einen Modus enthält ("Lüftungsplan Normal")
+    const schedules = {};
+    if (cfg.schedules) Object.assign(schedules, cfg.schedules);
+    else {
+      for (const id of Object.keys(hass.states)) {
+        if (!id.startsWith("schedule.") || !HC_VENT_RE.test(`${id} ${name(id)}`)) continue;
+        const n = name(id).toLowerCase();
+        const opt = options.find((o) => new RegExp(`(^|\\s|_)${o.toLowerCase()}($|\\s|_)`).test(n));
+        if (opt && !schedules[opt]) schedules[opt] = id;
+      }
+    }
+    Object.entries(schedules).forEach(([opt, id]) => { map[`plan_${options.indexOf(opt)}`] = id; });
+    // Relais je Stufe (in Reihenfolge der Modi), um zu prüfen, ob die Anlage umgeschaltet hat
+    let stages = cfg.stages;
+    if (!stages) {
+      const sw = Object.keys(hass.states).filter((id) => id.startsWith("switch.") && HC_VENT_RE.test(id) && /\d$/.test(id))
+        .sort((a, b) => parseInt(a.match(/(\d+)$/)[1], 10) - parseInt(b.match(/(\d+)$/)[1], 10));
+      if (sw.length === options.length) stages = sw;
+    }
+    (stages || []).forEach((id, i) => { map[`stage_${i}`] = id; });
+    const bat = cfg.battery || Object.keys(hass.states).find((id) => id.startsWith("binary_sensor.") && HC_VENT_RE.test(id)
+      && hass.states[id].attributes.device_class === "battery");
+    if (bat) map.battery = bat;
+    this._schedules = schedules;
+    this._options = options;
+    this._map = map;
+    this._loadPlans();
+  }
+
+  // Zeitfenster der Pläne (schedule/list, nur für Administratoren). Ohne: nur nächster Wechsel aus next_event.
+  _loadPlans() {
+    if (this._plansLoading || (this._plansAt && Date.now() - this._plansAt < 3600e3)) return;
+    if (!Object.keys(this._schedules).length) return;
+    this._plansLoading = true;
+    this._hass.callWS({ type: "schedule/list" }).then((items) => {
+      const plans = {};
+      for (const [opt, id] of Object.entries(this._schedules)) {
+        const obj = id.split(".")[1];
+        const fn = this._hass.states[id]?.attributes.friendly_name;
+        const it = items.find((x) => x.id === obj) || items.find((x) => x.name === fn);
+        if (it) plans[opt] = it;
+      }
+      this._plans = plans;
+      this._plansAt = Date.now(); this._plansLoading = false; this._last = ""; this._paint();
+    }).catch(() => { this._plansLoading = false; this._plansAt = Date.now(); });
+  }
+
+  _color(opt) {
+    const i = this._options.indexOf(opt);
+    return HC_VENT_COLORS[(opt || "").toLowerCase()] || HC_VENT_PALETTE[i] || "#8a94a3";
+  }
+
+  _level(opt) {
+    const i = this._options.indexOf(opt);
+    if (i < 0) return 0;
+    return /^(aus|off)$/i.test(this._options[0]) ? i : i + 1;
+  }
+
+  // Schaltpunkte (Beginn eines Planfensters) für einen Tag: [{min, opt}]
+  _events(date) {
+    const day = HC_DAYS[date.getDay()];
+    const ev = [];
+    for (const [opt, p] of Object.entries(this._plans || {})) {
+      for (const w of p[day] || []) {
+        const [h, m] = w.from.split(":").map(Number);
+        ev.push({ min: h * 60 + m, opt });
+      }
+    }
+    return ev.sort((a, b) => a.min - b.min);
+  }
+
+  // Modus nach Plan über einen Tag: Segmente [{from, to, opt}] (Minuten); der Modus gilt bis zum nächsten Schaltpunkt
+  _timeline(date) {
+    let cur = null;
+    for (let back = 1; back <= 7 && cur === null; back++) {
+      const d = new Date(date); d.setDate(d.getDate() - back);
+      const ev = this._events(d);
+      if (ev.length) cur = ev[ev.length - 1].opt;
+    }
+    const segs = [];
+    let start = 0;
+    for (const e of this._events(date)) {
+      if (e.opt === cur) continue;
+      if (e.min > start) segs.push({ from: start, to: e.min, opt: cur });
+      start = e.min; cur = e.opt;
+    }
+    segs.push({ from: start, to: 1440, opt: cur });
+    return segs.filter((s) => s.to > s.from);
+  }
+
+  // Nächster Wechsel auf einen anderen Modus als den aktuellen
+  _next(current) {
+    const now = new Date();
+    if (this._plans) {
+      for (let d = 0; d < 8; d++) {
+        const day = new Date(now); day.setDate(now.getDate() + d); day.setHours(0, 0, 0, 0);
+        for (const e of this._events(day)) {
+          const t = day.getTime() + e.min * 60000;
+          if (t > now.getTime() && e.opt !== current) return { t, opt: e.opt };
+        }
+      }
+      return null;
+    }
+    // Rückfall: nächstes Einschalten eines Plans aus next_event
+    let best = null;
+    for (const [opt, id] of Object.entries(this._schedules || {})) {
+      const st = this._hass.states[id];
+      const t = Date.parse(st?.attributes.next_event || "");
+      if (!st || st.state === "on" || !Number.isFinite(t) || opt === current) continue;
+      if (!best || t < best.t) best = { t, opt };
+    }
+    return best;
+  }
+
+  _when(t) {
+    const d = new Date(t), today = new Date();
+    const tomorrow = new Date(); tomorrow.setDate(today.getDate() + 1);
+    const time = this._clock(t);
+    if (d.toDateString() === today.toDateString()) return `${time} Uhr`;
+    if (d.toDateString() === tomorrow.toDateString()) return `morgen ${time} Uhr`;
+    return `${d.toLocaleDateString(this._lang, { weekday: "short" })} ${time} Uhr`;
+  }
+
+  _render() {
+    const st = this._st("mode");
+    const opts = this._options;
+    const cur = st?.state;
+    const unavailable = !st || !opts.includes(cur);
+    // Plan: welcher Modus gilt laut Zeitplan gerade?
+    let planned = null;
+    if (this._plans) {
+      const now = new Date(), min = now.getHours() * 60 + now.getMinutes();
+      planned = this._timeline(now).find((s) => min >= s.from && min < s.to)?.opt ?? null;
+    } else {
+      planned = Object.entries(this._schedules || {}).find(([, id]) => this._hass.states[id]?.state === "on")?.[0] ?? null;
+    }
+    const auto = planned !== null && planned === cur;
+    const next = cur ? this._next(cur) : null;
+    // Relais prüfen: genau die Stufe des Modus sollte an sein
+    const idx = opts.indexOf(cur);
+    const stageIds = opts.map((_, i) => this._map[`stage_${i}`]).filter(Boolean);
+    let relayOk = null, relayOn = [];
+    if (stageIds.length === opts.length) {
+      relayOn = opts.map((_, i) => this._on(`stage_${i}`));
+      relayOk = relayOn.every((on, i) => on === (i === idx));
+    }
+    const changedAgo = st ? Date.now() - Date.parse(st.last_changed) : 0;
+    const relayBad = relayOk === false && changedAgo > 120000;
+    const lowBat = this._on("battery") === true;
+    let sub;
+    if (unavailable) sub = "nicht erreichbar";
+    else if (relayBad) sub = "Relais passt nicht zum Modus – Aktor prüfen";
+    else if (auto) sub = `nach Plan${next ? ` · ab ${this._when(next.t)}: ${next.opt}` : ""}`;
+    else sub = `manuell${planned ? ` (Plan: ${planned})` : ""}${next ? ` · ab ${this._when(next.t)}: ${next.opt}` : ""}`;
+    const level = unavailable || relayBad ? "bad" : "";
+    const buttons = opts.map((o) => {
+      const lv = this._level(o), maxLv = this._level(opts[opts.length - 1]);
+      const bars = Array.from({ length: maxLv }, (_, i) => `<i class="${i < lv ? "on" : ""}" style="height:${6 + i * 4}px"></i>`).join("");
+      return `<button class="mode ${o === cur ? "sel" : ""}" data-action="mode:${hcEsc(o)}" style="--mc:${this._color(o)}" aria-pressed="${o === cur}">
+        <span class="bars">${bars || '<i class="x"></i>'}</span><span>${hcEsc(o)}</span></button>`;
+    }).join("");
+    const now = new Date();
+    const tl = this._plans ? this._timeline(now) : null;
+    const nowPct = ((now.getHours() * 60 + now.getMinutes()) / 1440) * 100;
+    const segs = tl ? tl.map((s) => `<span style="left:${(s.from / 14.4).toFixed(2)}%;width:${((s.to - s.from) / 14.4).toFixed(2)}%;background:${s.opt ? this._color(s.opt) : "transparent"}" title="${hcEsc(`${s.opt || "–"} ${String(Math.floor(s.from / 60)).padStart(2, "0")}:${String(s.from % 60).padStart(2, "0")}`)}"></span>`).join("") : "";
+    const legend = tl ? [...new Set(tl.map((s) => s.opt).filter(Boolean))].sort((a, b) => opts.indexOf(a) - opts.indexOf(b))
+      .map((o) => `<span><i style="background:${this._color(o)}"></i>${hcEsc(o)}</span>`).join("") : "";
+    const tomorrow = new Date(); tomorrow.setDate(now.getDate() + 1);
+    const tl2 = this._plans ? this._timeline(tomorrow) : null;
+    const segs2 = tl2 ? tl2.map((s) => `<span style="left:${(s.from / 14.4).toFixed(2)}%;width:${((s.to - s.from) / 14.4).toFixed(2)}%;background:${s.opt ? this._color(s.opt) : "transparent"}"></span>`).join("") : "";
+    const since = st && Number.isFinite(Date.parse(st.last_changed)) ? Date.parse(st.last_changed) : null;
+    return `
+      ${this._heroVent(cur, unavailable)}
+      <div class="main">
+        <div class="head ${level}" style="${level ? "" : `color:${this._color(cur)}`}">${hcEsc(unavailable ? "Lüftung" : cur)}</div>
+        <div class="sub">${hcEsc(sub)}</div>
+        <div class="modes">${buttons}</div>
+        ${tl ? `
+        <div class="tlh"><span>Heute</span><span>${hcEsc(now.toLocaleDateString(this._lang, { weekday: "long" }))}</span></div>
+        <div class="tline">${segs}<b style="left:${nowPct}%"></b></div>
+        <div class="tlh sm"><span>Morgen</span></div>
+        <div class="tline sm">${segs2}</div>
+        <div class="ticks"><span>0</span><span>6</span><span>12</span><span>18</span><span>24 Uhr</span></div>
+        <div class="legend">${legend}</div>` : ""}
+        <div class="tiles">
+          ${this._tile("clock", since ? this._clock(since) + " Uhr" : "–", `${cur || "Modus"} seit`, "", "mode")}
+          ${this._tile("fan", next ? this._when(next.t).replace(" Uhr", "") : "–", next ? `dann ${next.opt}` : "kein Planwechsel")}
+        </div>
+      </div>
+      ${lowBat ? `<div class="foot"><span class="warn">${hcIcon("battery")}Batterie des Aktors schwach</span></div>` : ""}`;
+  }
+
+  _heroVent(cur, unavailable) {
+    const lv = unavailable ? 0 : this._level(cur);
+    const dur = lv ? (2.4 / lv).toFixed(2) : 0;
+    const on = lv > 0;
+    const flow = (cls, d) => `<path class="flow ${on ? "on" : ""} ${cls}" d="${d}" style="animation-duration:${on ? (3.3 / lv).toFixed(2) : 1}s"/>`;
+    return `
+      <div class="hero vent light">
+        <div class="hero__top"><div class="hero__title">${hcEsc(this._config.title || "Lüftung")}</div>${this._pill(24 * 3600e3, unavailable)}</div>
+        <svg class="scene" viewBox="0 0 400 190" role="img" aria-label="Lüftungsanlage">
+          <path class="house" d="M70 177 V92 L200 34 L330 92 V177 Z"/>
+          <line class="floor" x1="70" y1="132" x2="330" y2="132"/>
+          <rect class="win" x="96" y="100" width="34" height="22" rx="3"/><rect class="win" x="270" y="100" width="34" height="22" rx="3"/>
+          <rect class="win" x="96" y="144" width="34" height="22" rx="3"/><rect class="win" x="270" y="144" width="34" height="22" rx="3"/>
+          <rect class="unit" x="168" y="140" width="64" height="34" rx="6"/>
+          <g class="rotor ${on ? "spin" : ""}" style="animation-duration:${dur}s">
+            <circle cx="200" cy="157" r="12" class="ring"/>
+            <path d="M200 157 q-2 -11 6 -10 q2 6 -6 10 M200 157 q11 -2 10 6 q-6 2 -10 -6 M200 157 q2 11 -6 10 q-2 -6 6 -10 M200 157 q-11 2 -10 -6 q6 -2 10 6"/>
+          </g>
+          ${flow("fresh", "M20 160 H168")}
+          ${flow("exhaust", "M232 160 H380")}
+          ${flow("supply", "M186 140 V112 H150")}
+          ${flow("extract", "M250 112 H214 V140")}
+          <line class="ground" x1="10" y1="177" x2="390" y2="177"/>
+        </svg>
+      </div>`;
+  }
+
+  _action(a) {
+    if (!a.startsWith("mode:")) return;
+    const opt = a.slice(5);
+    const id = this._map.mode;
+    const domain = id.split(".")[0];
+    this._hass.callService(domain, "select_option", { entity_id: id, option: opt }).catch((err) => {
+      this.dispatchEvent(new CustomEvent("hass-notification", { detail: { message: err?.message || String(err) }, bubbles: true, composed: true }));
+    });
+  }
+
+  _styles() {
+    return `
+      .hero.vent { background: linear-gradient(180deg, #cfe0ee 0%, #e6eef5 65%, #eef2f6 100%); }
+      .scene .house { fill: #f7f8fa; stroke: #b8c2ce; stroke-width: 2.5; stroke-linejoin: round; }
+      .scene .floor { stroke: #d3dae3; stroke-width: 2; }
+      .scene .win { fill: #dbe8f4; stroke: #b8c2ce; }
+      .scene .unit { fill: #e3e8ee; stroke: #9aa6b4; stroke-width: 2; }
+      .scene .rotor { transform-origin: 200px 157px; } .scene .rotor .ring { fill: #f7f8fa; stroke: #9aa6b4; }
+      .scene .rotor path { fill: #6b7787; }
+      .scene .rotor.spin { animation: hc-spin linear infinite; }
+      @keyframes hc-spin { to { transform: rotate(360deg); } }
+      .scene .flow.fresh { --c: #4aa3ff; } .scene .flow.supply { --c: #4aa3ff; }
+      .scene .flow.exhaust { --c: #e8833a; } .scene .flow.extract { --c: #e8833a; }
+      .scene .ground { stroke: rgba(80,90,105,.25); }
+      .head.bad { color: var(--hc-red); }
+      .modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; margin: 16px 0 6px; }
+      .mode { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 4px 10px; border-radius: 14px; background: var(--hc-tile); font-weight: 600; transition: background .15s, color .15s; }
+      .mode:hover { background: color-mix(in srgb, var(--mc) 16%, transparent); }
+      .mode.sel { background: var(--mc); color: #fff; }
+      .bars { display: flex; align-items: flex-end; gap: 3px; height: 18px; }
+      .bars i { display: block; width: 6px; border-radius: 2px; background: color-mix(in srgb, var(--hc-fg) 22%, transparent); }
+      .bars i.on { background: var(--mc); } .mode.sel .bars i { background: rgba(255,255,255,.45); } .mode.sel .bars i.on { background: #fff; }
+      .bars i.x { width: 14px; height: 3px; margin-bottom: 7px; }
+      .tlh { display: flex; justify-content: space-between; color: var(--hc-fg2); font-size: 14px; margin: 14px 0 6px; }
+      .tlh.sm { margin-top: 8px; font-size: 13px; }
+      .tline { position: relative; height: 18px; border-radius: 6px; background: var(--hc-track); overflow: hidden; }
+      .tline.sm { height: 10px; opacity: .75; }
+      .tline span { position: absolute; top: 0; bottom: 0; }
+      .tline b { position: absolute; top: -2px; bottom: -2px; width: 3px; margin-left: -1.5px; background: var(--hc-fg); border-radius: 2px; }
+      .ticks { display: flex; justify-content: space-between; color: var(--hc-fg2); font-size: 12px; margin-top: 4px; }
+      .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--hc-fg2); font-size: 13px; margin-top: 8px; }
+      .legend span { display: inline-flex; align-items: center; gap: 6px; } .legend i { width: 10px; height: 10px; border-radius: 3px; }
+      @media (prefers-reduced-motion: reduce) { .scene .rotor.spin { animation: none; } }`;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Gemeinsame Gestaltung
 // ---------------------------------------------------------------------------
 const HC_STYLES = `
@@ -1541,6 +1834,10 @@ class HcNasEditor extends HcSimpleEditor {
   static hint = "Die DiskStation wird über die Integration „Synology DSM“ automatisch gefunden. Bei mehreren Geräten im YAML-Editor device_id angeben.";
 }
 
+class HcVentEditor extends HcSimpleEditor {
+  static hint = "Modus, Zeitpläne („…plan Normal“) und Relais werden über den Namen „Lüftung“ gefunden. Sonst im YAML-Editor angeben: entity, schedules: { Normal: schedule.… }, stages: [switch.…], battery.";
+}
+
 const hcDefine = (tag, cls) => { if (!customElements.get(tag)) customElements.define(tag, cls); };
 hcDefine("hc-weather-station-card", HcWeatherStationCard);
 hcDefine("hc-diskstation-card", HcDiskStationCard);
@@ -1550,6 +1847,8 @@ hcDefine("hc-dishwasher-card", HcDishwasherCard);
 hcDefine("hc-wallbox-card", HcWallboxCard);
 hcDefine("hc-printer-card", HcPrinterCard);
 hcDefine("hc-fritzbox-card", HcFritzBoxCard);
+hcDefine("hc-ventilation-card", HcVentilationCard);
+hcDefine("hc-ventilation-card-editor", HcVentEditor);
 hcDefine("hc-generic-card-editor", HcGenericEditor);
 hcDefine("hc-wallbox-card-editor", HcWallboxEditor);
 window.customCards = window.customCards || [];
@@ -1559,6 +1858,7 @@ for (const c of [
   { type: "hc-dishwasher-card", name: "Geschirrspüler (ha-cards)", description: "Home-Connect-Geschirrspüler: Programm, Restzeit, Fortschritt, Salz/Klarspüler, Start/Stopp." },
   { type: "hc-wallbox-card", name: "Ladestation (ha-cards)", description: "Tesla Wall Connector: Ladeleistung, Phasen, Ladevorgang, kWh heute/Monat/gesamt." },
   { type: "hc-printer-card", name: "Drucker (ha-cards)", description: "IPP-Drucker: Status und Tintenfüllstände mit Warnung." },
+  { type: "hc-ventilation-card", name: "Lüftung (ha-cards)", description: "Lüftungsanlage: Modus wählen, Tagesplan aus den Zeitplänen, nächster Wechsel, Relaisprüfung." },
   { type: "hc-fritzbox-card", name: "FRITZ!Box (ha-cards)", description: "Internetverbindung, Durchsatz, Auslastung, Datenmenge heute, Geräte im Netz, WLAN und Gäste-WLAN mit QR-Code." },
 ]) if (!window.customCards.some((x) => x.type === c.type)) window.customCards.push({ ...c, preview: true });
 console.info(`%c HA-CARDS %c ${HC_VERSION} `, "background:#2f7fe0;color:#fff;border-radius:3px 0 0 3px", "background:#14213d;color:#fff;border-radius:0 3px 3px 0");

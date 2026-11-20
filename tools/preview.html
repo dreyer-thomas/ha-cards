@@ -100,9 +100,29 @@ fb('switch.fritz_box_7590_ax_wi_fi_heimnetz_5g',F.w5??'on',undefined,{friendly_n
 fb('switch.fritz_box_7590_ax_wi_fi_heimnetz_gast',F.guest??'on',undefined,{friendly_name:'FRITZ!Box 7590 AX WLAN-Gast'});
 fb('image.fritz_box_7590_ax_heimnetz_gast','2026-11-17T12:33:02Z',undefined,{});
 for (let i=0;i<17;i++) fb(`device_tracker.geraet_${i}`,i<15?'home':'not_home',undefined,{connection_type:i%4===0?'LAN':'WLAN'},{dev:'t'+i});
+// Lüftung (input_select + schedule-Helfer + 4-Kanal-Aktor)
+const V = scen.vent || {};
+const vm = V.mode ?? 'Normal', vopts = ['Aus','Niedrig','Normal','Party'];
+add('input_select.lufter_haus', vm, null, {platform:'input_select', attr:{options:vopts, friendly_name:'Lüfter_Haus', icon:'mdi:fan'}, changed: V.since ?? 47*60e3});
+add('schedule.luftungsplan_aus', 'on', null, {platform:'schedule', attr:{friendly_name:'Lüftungsplan Normal', next_event:new Date(now+3*3600e3).toISOString()}});
+add('schedule.luftungsplan_aus_2', 'off', null, {platform:'schedule', attr:{friendly_name:'Lüftungsplan Aus', next_event:new Date(now+60*3600e3).toISOString()}});
+add('schedule.luftungsplan_niedrig_2', 'off', null, {platform:'schedule', attr:{friendly_name:'Lüftungsplan Niedrig', next_event:new Date(now+3*3600e3).toISOString()}});
+vopts.forEach((o,i)=>add(`switch.luftung_lueftung_${i+1}`, (V.relay ?? vm)===o?'on':'off', 'vent', {platform:'homematicip_local'}));
+add('binary_sensor.luftung_batterie', V.lowbat ?? 'off', 'vent', {platform:'homematicip_local', attr:{device_class:'battery'}});
+const wk=[{from:'05:30:00',to:'09:00:00'},{from:'17:00:00',to:'23:00:00'}];
+const VPLANS=[{id:'luftungsplan_aus',name:'Lüftungsplan Normal',monday:wk,tuesday:wk,wednesday:wk,thursday:wk,friday:wk,saturday:[],sunday:[]},
+ {id:'luftungsplan_niedrig_2',name:'Lüftungsplan Niedrig',...Object.fromEntries(['monday','tuesday','wednesday','thursday','friday'].map(d=>[d,[{from:'00:00:00',to:'05:30:00'},{from:'23:00:00',to:'24:00:00'}]])),saturday:[{from:'00:00:00',to:'08:00:00'},{from:'23:00:00',to:'24:00:00'}],sunday:[{from:'00:00:00',to:'08:00:00'},{from:'23:00:00',to:'24:00:00'}]},
+ {id:'luftungsplan_aus_2',name:'Lüftungsplan Aus',...Object.fromEntries(['monday','tuesday','wednesday','thursday','friday'].map(d=>[d,[{from:'09:00:00',to:'17:30:00'}]])),saturday:[],sunday:[]}];
+// Müllabfuhr (waste_collection_schedule, Darstellung "upcoming")
+const M = scen.waste || {};
+const ds=(n)=>{const d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10).replace(/T.*/,'');};
+const loc=(n)=>{const d=new Date(); d.setDate(d.getDate()+n); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+const off=M.off??3;
+const wattr={[loc(off)]:'Biomüll',[loc(off+1)]:'Gelbe Tonne',[loc(off+7)]:'Biomüll',[loc(off+10)]:'Restmüll',[loc(off+14)]:'Biomüll, Papiertonne',[loc(off+15)]:'Gelbe Tonne',[loc(off+24)]:'Restmüll'};
+for (const n of ['restmull','gelbe_tonne','papiertonne','biotonne']) add(`sensor.${n}`, off, 'waste', {platform:'waste_collection_schedule', attr:{...wattr, friendly_name:`Waste Collection Schedule ${n}`}});
 const midnight=new Date(); midnight.setHours(0,0,0,0);
 const hass={states,entities,devices,locale:{language:'de'},language:'de',callService:()=>Promise.resolve(),
- callWS:(m)=>{const res={}; const h=(o)=>({start:midnight.getTime()+o*3600e3});
+ callWS:(m)=>{ if (m.type==='schedule/list') return V.noAdmin ? Promise.reject(new Error('unauthorized')) : Promise.resolve(VPLANS); const res={}; const h=(o)=>({start:midnight.getTime()+o*3600e3});
   res['sensor.wetterstation_ch_temperatur']=[{...h(-1),state:3.1,min:3,max:3.4},{...h(0),min:1.8,max:2.6},{...h(4),min:0.9,max:1.5},{...h(9),min:3.2,max:5.6}];
   res['sensor.wetterstation_ch_regenzahler']=[{...h(-1),state:549.3,change:0},{...h(2),change:1.4}];
   res['sensor.wetterstation_ch_sonnenscheindauer']=[{...h(-1),state:0,change:0}];
@@ -111,7 +131,7 @@ const hass={states,entities,devices,locale:{language:'de'},language:'de',callSer
   res['sensor.fritz_box_7590_ax_gb_gesendet']=[{...h(-1),state:37.2}];
   res['sensor.tesla_wall_connector_energie']=[{start:ms.getTime()-86400e3,state:2371.2},{start:midnight.getTime()-86400e3,state:2490.1}];
   return Promise.resolve(res);}};
-const tags={weather:'hc-weather-station-card',nas:'hc-diskstation-card',dw:'hc-dishwasher-card',wb:'hc-wallbox-card',pr:'hc-printer-card',fb:'hc-fritzbox-card'};
+const tags={weather:'hc-weather-station-card',nas:'hc-diskstation-card',dw:'hc-dishwasher-card',wb:'hc-wallbox-card',pr:'hc-printer-card',fb:'hc-fritzbox-card',vent:'hc-ventilation-card',waste:'hc-waste-card'};
 const card=document.createElement(tags[q.get('card')]||tags.weather);
 card.setConfig({}); document.getElementById('wrap').appendChild(card); card.hass=hass; window.card=card;
 </script></body></html>

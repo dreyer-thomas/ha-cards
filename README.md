@@ -113,6 +113,50 @@ type: custom:hc-printer-card
 
 Benötigt die Integration **Internet Printing Protocol (IPP)**.
 
+## Lüftung
+
+```yaml
+type: custom:hc-ventilation-card
+```
+
+| Nach Plan | Party (manuell) |
+|---|---|
+| ![](screenshots/lueftung.png) | ![](screenshots/lueftung-party.png) |
+
+- Haus mit Lüftungsgerät: Lüfterrad und Luftströme (Frischluft/Fortluft) laufen je nach Stufe schneller
+- Moduswahl per Tipp (Optionen des `input_select`), Anzeige „nach Plan“ oder „manuell“
+- Tagesverlauf heute und morgen aus den Zeitplänen, nächster Wechsel
+- Warnt, wenn die Relais der Stufen (z. B. Homematic HM-LC-Sw4-WM) nicht zum Modus passen, und bei schwacher Batterie
+
+Gedacht für Anlagen, deren Stufe über einen `input_select` und Automationen geschaltet wird.
+Gefunden wird alles mit „Lüftung“ im Namen; sonst angeben:
+
+```yaml
+type: custom:hc-ventilation-card
+entity: input_select.lufter_haus
+schedules:            # Zeitplan je Modus (schedule-Helfer)
+  Normal: schedule.luftungsplan_normal
+  Niedrig: schedule.luftungsplan_niedrig
+stages: [switch.stufe_1, switch.stufe_2, switch.stufe_3, switch.stufe_4]   # optional, in Reihenfolge der Modi
+```
+
+Die Zeiten der Pläne kann nur ein Administrator-Konto lesen; sonst zeigt die Karte nur den nächsten Wechsel.
+
+## Müllabfuhr
+
+```yaml
+type: custom:hc-waste-card
+```
+
+![](screenshots/muell.png)
+
+- Tonnen vor dem Zaun; was heute oder morgen abgeholt wird, steht an der Straße
+- „Morgen: Biomüll – heute Abend rausstellen“, je Tonne der nächste Termin
+- Kalender der laufenden und nächsten Woche mit farbigen Punkten
+
+Benötigt die Integration **Waste Collection Schedule** (Sensoren mit der Darstellung „upcoming“ liefern alle Termine).
+Andere Sensoren: `entities: [sensor.…]`.
+
 ## FRITZ!Box
 
 ```yaml
@@ -134,7 +178,7 @@ Benötigt die Integration **AVM FRITZ!Box Tools**. Repeater werden übergangen; 
 ## Entwicklung
 
 `tools/preview.html` zeigt die Karten mit Beispieldaten im Browser
-(`?card=weather`, `nas`, `dw`, `wb`, `pr` oder `fb`).
+(`?card=weather`, `nas`, `dw`, `wb`, `pr`, `fb`, `vent` oder `waste`).
 
 Gestaltung angelehnt an die Karten von [BavarianData](https://github.com/JustChr/BavarianData) (MIT).
 
